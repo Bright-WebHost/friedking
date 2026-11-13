@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+/* Fried King brand tokens, sampled from the logo and the client's promo banners. */
+@theme {
+  --color-fk-red: #ec1c23;        /* logo red */
+  --color-fk-red-dark: #c8141b;   /* hover / pressed */
+  --color-fk-maroon: #921213;     /* banner footer red */
+  --color-fk-yellow: #ffde05;     /* banner price tag */
+  --color-fk-tint: #fff1f1;       /* light red wash */
+  --color-fk-bg: #f5f3f3;         /* page background behind the white card */
+  --color-fk-surface: #ffffff;
+  --color-fk-line: #ece6e6;
+  --color-fk-ink: #1c1414;
+  --color-fk-muted: #6f6565;
+  --color-fk-veg: #1f8a3b;        /* FSSAI green */
+  --color-fk-nonveg: #a8261d;     /* FSSAI brown-red, darker than the brand red */
+}
+
+/* Fonts are loaded in app/layout.tsx with next/font. */
+@theme inline {
+  --font-sans: var(--font-inter), "Segoe UI", Roboto, ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-barlow), var(--font-inter), "Arial Narrow", sans-serif;
+}
+
+* { -webkit-tap-highlight-color: transparent; }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--color-fk-bg);
+  color: var(--color-fk-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button { cursor: pointer; }
+
+/* Red and white checkered strip from the banners. */
+.fk-checker {
+  height: 16px;
+  background: repeating-conic-gradient(var(--color-fk-red) 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+}
+.fk-checker-sm {
+  height: 8px;
+  background: repeating-conic-gradient(var(--color-fk-red) 0 25%, #fff 0 50%) 0 0 / 8px 8px;
+}
+
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
