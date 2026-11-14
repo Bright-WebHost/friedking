@@ -167,9 +167,32 @@ function BannerModal({ b, onClose, onSaved }: { b: Banner | null; onClose: () =>
   const [f, setF] = useState({ title: b?.title ?? '', description: b?.description ?? '', startsAt: b?.starts_at ?? '', endsAt: b?.ends_at ?? '', isActive: b?.is_active ?? true })
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState(b?.image_url ?? null)
+  const [fileName, setFileName] = useState('')
   const [busy, setBusy] = useState(false)
   return <Modal onClose={onClose}><h3>{b ? 'Edit banner' : 'Add banner'}</h3>
-    <div className="mimgpick"><Img src={preview} /><input type="file" accept="image/*" onChange={(e) => { const x = e.target.files?.[0]; if (x) { setFile(x); setPreview(URL.createObjectURL(x)) } }} /></div>
+    <div className="mimgpick">
+      <Img src={preview} />
+      <div style={{ minWidth: 0 }}>
+        <label className="btn sm ghost" style={{ display: 'inline-block', cursor: 'pointer' }}>
+          Choose banner image
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            hidden
+            onChange={(e) => {
+              const x = e.target.files?.[0]
+              if (!x) return
+              setFile(x)
+              setFileName(x.name)
+              setPreview(URL.createObjectURL(x))
+            }}
+          />
+        </label>
+        <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)' }}>
+          {fileName || (preview ? 'Current image' : 'PNG, JPG, or WebP · max 5 MB')}
+        </div>
+      </div>
+    </div>
     <label className="lbl">Title</label><input className="f2" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="e.g. Spicy deals await!" />
     <label className="lbl">Description</label><input className="f2" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="e.g. 5 pcs combo at ₹249" />
     <div style={{ display: 'flex', gap: 10 }}>
