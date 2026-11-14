@@ -39,9 +39,21 @@ app/api/order/route.ts    POST place an order
 lib/types.ts              Shared types
 lib/utils.ts              formatPrice, calcTotals (5% GST), normalizePhone, formatTime
 lib/supabase/             admin.ts (service role), client.ts (browser), server.ts (SSR)
-supabase/ SQL files, run in order in the Supabase SQL Editor: schema v2, Pandeshwar seed v4, orders migration v3
-docs/DASHBOARD_PLAN.md    Plan for the staff dashboard (NOT built yet)
+supabase/ SQL files, run in order in the Supabase SQL Editor: schema v2, Pandeshwar seed v4, orders migration v3,
+                          then dashboard phase1, phase1_tables, phase2, menu_promotions, menu_storage, dashboard_oceana
+docs/DASHBOARD_PLAN.md    Oceana -> Fried King feature checklist and decisions for the staff dashboard
+
+app/dashboard/(auth)/login              Staff sign-in (Supabase Auth)
+app/dashboard/(main)/DashboardShell.tsx Sidebar, header, sound/shift gate, branch switcher, global NewOrderAlert
+app/dashboard/(main)/kit.tsx            Client kit: api(), IST ranges, Modal, Slide, Switch, printing, usePoll
+app/dashboard/(main)/sections/*.tsx     One file per page: Orders, Tables, POS, Chat, Menu, Stock, Pnl, Riders, Analytics, Contacts, Loyalty, Blast, Settings
+app/dashboard/dashboard.css             Oceana stylesheet port, scoped under .fkd
+app/api/dashboard/[branch]/[domain]     Single dispatcher: GET = read, POST {action} = write
+lib/dashboard/handlers/*.ts             Server logic per domain (service role, branch + role checked in resolveCtx/needSection)
+lib/dashboard/access.ts                 Sections and which roles see them (owner / manager / staff)
 ```
+
+Old dashboard files that are no longer used and can be deleted: `app/dashboard/(main)/Dashboard{Client,Contacts,POS,Phase2,Placeholder,Reports,Settings}.tsx` and `app/api/dashboard/{orders,menu,pos,tables,stock,loyalty,broadcasts,contacts,analytics,settings,promotions}/`. Keep `app/api/dashboard/me`.
 
 ## Database (Supabase / Postgres)
 
@@ -68,38 +80,30 @@ Seeded: Pandeshwar only (using branch id `a1b2c3d4-0001-0001-0001-000000000001`)
 - **Every order writes an `order_created` row to `order_events`.** n8n depends on it. Keep the payload shape stable and tell Maithri if you change it.
 - Veg/non-veg marks follow FSSAI (green square for veg, red for non-veg). Every item has `is_veg`.
 - Cart is saved in localStorage per branch; wrap storage access in try/catch.
-- Brand colours are placeholders (red/gold on dark), defined as tokens in `app/globals.css`. Use the `fk-*` tokens, not hard-coded hex.
+- Brand tokens (`fk-*`) live in `app/globals.css`; the dashboard has its own scoped variables in `app/dashboard/dashboard.css`.
 - The WhatsApp bot link format is `/?branch=pandeshwar&phone=91XXXXXXXXXX`. It skips the branch picker and pre-fills the phone.
 
-## Status: what exists and what does not
+## Status
 
-**Only the customer-facing ordering app has been built.** That is everything under `app/page.tsx` and the three API routes. It covers: branch picker, menu with categories, search and veg filter, cart (saved per branch), checkout (pickup or delivery, cash or UPI), order confirmation, and writing the order plus an `order_created` outbox row. It was verified end to end against a mock database and Maithri has since run the schema, seed and orders migration on the real Supabase project and is testing it.
+**Customer ordering app** (`app/page.tsx` + `/api/order`): branch menu, cart, checkout (pickup or delivery), confirmation, `order_created` outbox row. Live on the real Supabase project.
 
-**Nothing else exists yet. Do not assume any of these are present or look for them in the code:**
+**Staff dashboard** (`/dashboard/[branch]/[section]`): a feature-for-feature copy of the Oceana staff dashboard in Fried King colours, built 2026-11-14. Full checklist and decisions in `docs/DASHBOARD_PLAN.md`. Sections: POS, Orders (new-order popup with siren, kanban, slide-to-advance, edit, undo with passcode, print), Tables (separate page: tabs, rounds, close & pay, move, merge, QR), Live Chat, Menu, Stock (dishes, ingredients, recipes, ledger, stock take, reports), P&L, Riders, Analytics, Contacts, Loyalty, Blast, Settings (incl. staff logins). Needs `supabase/friedking_dashboard_oceana.sql` to be run.
 
-- No staff dashboard, no staff login, no `staff` table, no roles, no owner/super dashboard. There is no `/login` and no `/dashboard` route.
-- No order management: nothing changes an order's status after it is placed, so orders stay `pending`.
-- No staff-side menu management (sold-out switch, editing, adding items). The menu can only be changed in Supabase.
-- No tables or dine-in, no POS, no riders, no analytics, no P&L, no settings pages.
-- No delivery fee, minimum order or delivery pincodes.
-- No phone verification at checkout (the OTP SQL functions exist but are not called).
-- No menu photos, no item variants UI.
-- No n8n workflows and no YCloud connection. Both are pending on the client and another developer; the app only writes to `order_events` for them to read later.
-- Only Pandeshwar is seeded. The other branches do not exist in the database yet.
+Decisions (Maithri, 2026-11-14):
+- WhatsApp sends never leave the dashboard directly. Order messages go to `order_events` (`order_status_changed`, `rider_assigned`, `invoice_requested`, `table_invoice_requested`, plus `order_created` from POS); chat replies go to `chat_messages` (outbound, `delivery_status = pending`); blasts go to `outbound_messages`. n8n sends them later.
+- AI Assistant is the last item, after an AI provider is chosen. The page shows a placeholder.
+- Statuses keep the existing enum: pending = new (awaiting accept), preparing, ready (= ready for pickup / out for delivery / served), delivered, cancelled (declines carry `cancel_reason`).
+- Roles: owner (all sections, all branches), manager (no Contacts, Blast, Settings), staff (POS, Orders, Tables).
+- Stock moves only through `fk_stock_move` / `fk_order_stock` (deduct on accept or POS create, restore on cancel). Points are earned via `fk_loyalty_earn` when an order is marked delivered.
 
-## Next task: staff dashboard, phase 1
+Not done yet:
+- AI Assistant.
+- Customer checkout does not yet use the dashboard's minimum order, delivery fee, pincodes or order-type settings (client rules unknown).
+- No phone verification at checkout (OTP functions exist, not called). No item variants UI.
+- n8n workflows and the YCloud connection (pending on the client and another developer).
+- Only Pandeshwar is seeded; Falnir and Kadri wait on menu data.
 
-The dashboard is modelled on the Oceana staff dashboard (a sibling product by the same team), changed for three branches. The full plan, with routes, database changes, build phases and open questions, is in `docs/DASHBOARD_PLAN.md`. Read it before writing any dashboard code. Key decisions already made with Maithri:
-
-- Staff login with Supabase Auth (email and password) plus a `staff` table (`user_id`, `branch_id` nullable, `role`). Owner = no branch = sees all branches.
-- One app, one Supabase project. Per-branch URLs `/dashboard/[branch]/...`, and an owner overview at `/dashboard`.
-- The **Tables page must be its own page**, not a tab inside Orders as Oceana does it.
-- Phase 1 only: login, staff table and RLS, dashboard shell with branch switcher, live Orders board, Menu management with sold-out switch. Do not start phase 2 or later without being asked.
-- Supply any schema change as a separate SQL file in `supabase/` for Maithri to run; do not edit the v2 schema file.
-
-Open questions still waiting on the client (do not guess): whether menu prices already include GST (the customer app currently adds 5% on top), whether branches have dine-in tables, whether they use their own riders, delivery rules per branch.
-
-Other later work, roughly in order: menu images in Supabase Storage, seed Kadri and Pandeshwar with real addresses and hours, phone verification at checkout, delivery fee and pincodes, item variants, then n8n and YCloud.
+Open questions for the client (do not guess): whether menu prices already include GST (orders add 5% on top today), delivery rules per branch.
 
 ## Working style
 

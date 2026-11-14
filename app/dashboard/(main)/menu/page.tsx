@@ -1,5 +1,5 @@
-import DashboardClient from '../DashboardClient'
+import { redirectToBranch } from '@/lib/dashboard/routing'
 
-export default function DashboardMenuPage() {
-  return <DashboardClient branchSlug={null} tab="menu" />
+export default async function OldMenuLink() {
+  return redirectToBranch('menu')
 }

@@ -1,5 +1,5 @@
-import DashboardClient from '../DashboardClient'
+import { redirectToBranch } from '@/lib/dashboard/routing'
 
-export default function DashboardOrdersPage() {
-  return <DashboardClient branchSlug={null} tab="orders" />
+export default async function OldOrdersLink() {
+  return redirectToBranch('orders')
 }

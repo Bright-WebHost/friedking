@@ -13,6 +13,12 @@ import { calcTotals, formatPrice, formatTime, normalizePhone } from '@/lib/utils
 
 type Screen = 'branches' | 'menu' | 'checkout' | 'confirmed'
 type DietFilter = 'all' | 'veg' | 'nonveg'
+type Promotion = {
+  id: string
+  title: string
+  description: string | null
+  image_url: string | null
+}
 
 const cartKey = (slug: string) => `fk-cart-${slug}`
 
@@ -51,6 +57,7 @@ export default function CustomerPage() {
   const [branch, setBranch] = useState<Branch | null>(null)
   const [categories, setCategories] = useState<MenuCategory[]>([])
   const [items, setItems] = useState<MenuItem[]>([])
+  const [promotions, setPromotions] = useState<Promotion[]>([])
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -58,8 +65,10 @@ export default function CustomerPage() {
   const [diet, setDiet] = useState<DietFilter>('all')
   const [query, setQuery] = useState('')
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false)
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null)
   const [cart, setCart] = useState<CartItem[]>([])
   const [cartOpen, setCartOpen] = useState(false)
+  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null)
 
   // Checkout
   const [name, setName] = useState('')
@@ -85,6 +94,15 @@ export default function CustomerPage() {
       setBranch(data.branch)
       setCategories(data.categories)
       setItems(data.items)
+      try {
+        const promotionsResponse = await fetch(`/api/promotions?branch=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+        const promotionsData = await readJson(promotionsResponse)
+        if (!promotionsResponse.ok) throw new Error(promotionsData.message ?? 'Unable to load offers')
+        setPromotions(Array.isArray(promotionsData.promotions) ? promotionsData.promotions : [])
+      } catch (error) {
+        console.error('[CustomerPage] offers:', error instanceof Error ? error.message : error)
+        setPromotions([])
+      }
 
       // Restore a saved cart, dropping anything no longer on the menu and refreshing prices.
       let restored: CartItem[] = []
@@ -141,12 +159,18 @@ export default function CustomerPage() {
   const changeQty = (item: MenuItem, delta: number) => {
     setCart((prev) => {
       const existing = prev.find((c) => c.item.id === item.id)
-      if (!existing) return delta > 0 ? [...prev, { item, quantity: delta }] : prev
+      if (!existing) return delta > 0 ? [...prev, { item, quantity: delta, specialNote: '' }] : prev
       const next = existing.quantity + delta
       if (next <= 0) return prev.filter((c) => c.item.id !== item.id)
       if (next > 50) return prev
       return prev.map((c) => (c.item.id === item.id ? { ...c, quantity: next } : c))
     })
+  }
+
+  const changeSpecialNote = (id: string, note: string) => {
+    setCart((prev) => prev.map((line) => (
+      line.item.id === id ? { ...line, specialNote: note.slice(0, 300) } : line
+    )))
   }
 
   const cartCount = cart.reduce((s, c) => s + c.quantity, 0)
@@ -181,6 +205,7 @@ export default function CustomerPage() {
 
   const jumpTo = (categoryId: string) => {
     setCategoryMenuOpen(false)
+    setSelectedCategoryId(categoryId)
     document.getElementById(`cat-${categoryId}`)?.scrollIntoView({ block: 'start' })
   }
 
@@ -217,7 +242,12 @@ export default function CustomerPage() {
         orderType,
         deliveryAddress: orderType === 'delivery' ? address.trim() : null,
         paymentMethod: payment,
-        specialInstructions: notes.trim() || null,
+        specialInstructions: [
+          notes.trim(),
+          ...cart
+            .filter((line) => line.specialNote?.trim())
+            .map((line) => `${line.item.name}: ${line.specialNote?.trim()}`),
+        ].filter(Boolean).join('\n').slice(0, 400) || null,
         idempotencyKey: idempotencyKey.current,
         items: cart.map((c) => ({ itemId: c.item.id, quantity: c.quantity })),
       }
@@ -495,8 +525,50 @@ export default function CustomerPage() {
         </section>
         <div className="fk-checker" />
 
+        {!loading && !loadError && <OfferBanner promotions={promotions} />}
+
+        {/* Category rail */}
+        {!loading && !loadError && categories.length > 0 && (
+          <nav aria-label="Menu categories" className="no-scrollbar sticky top-16 z-30 flex gap-4 overflow-x-auto border-b border-fk-line bg-white px-4 py-4 shadow-[0_2px_15px_rgba(0,0,0,0.04)]">
+            <button
+              onClick={() => {
+                setSelectedCategoryId(null)
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+              }}
+              className="flex w-[74px] shrink-0 flex-col items-center gap-1.5"
+            >
+              <span className={`grid h-16 w-16 place-items-center rounded-full border-2 bg-fk-tint text-2xl ${selectedCategoryId === null ? 'border-fk-red' : 'border-transparent'}`}>
+                🍽️
+              </span>
+              <span className={`max-w-[74px] truncate text-xs font-bold ${selectedCategoryId === null ? 'text-fk-red' : 'text-fk-muted'}`}>All</span>
+            </button>
+            {categories.map((category) => {
+              const preview = items.find((item) => item.categoryId === category.id)
+              const active = selectedCategoryId === category.id
+              return (
+                <button
+                  key={category.id}
+                  onClick={() => jumpTo(category.id)}
+                  className="flex w-[74px] shrink-0 flex-col items-center gap-1.5"
+                >
+                  <span className={`h-16 w-16 overflow-hidden rounded-full bg-fk-tint ${active ? 'border-2 border-fk-red p-0.5' : 'border-2 border-transparent'}`}>
+                    {preview?.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={preview.imageUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src="/brand/mark-red.png" alt="" className="h-full w-full rounded-full object-contain p-4 opacity-70" />
+                    )}
+                  </span>
+                  <span className={`max-w-[74px] truncate text-xs font-bold ${active ? 'text-fk-red' : 'text-fk-muted'}`}>{category.name}</span>
+                </button>
+              )
+            })}
+          </nav>
+        )}
+
         {/* Filters */}
-        <nav aria-label="Menu filters" className="no-scrollbar sticky top-16 z-30 flex gap-2.5 overflow-x-auto border-b border-fk-line bg-white px-4 py-3 shadow-[0_2px_15px_rgba(0,0,0,0.04)]">
+        <nav aria-label="Menu filters" className="no-scrollbar sticky top-[11.375rem] z-20 flex gap-2.5 overflow-x-auto border-b border-fk-line bg-white px-4 py-3 shadow-[0_2px_15px_rgba(0,0,0,0.04)]">
           <button
             onClick={() => setCategoryMenuOpen(true)}
             className="flex shrink-0 items-center gap-1.5 rounded-xl border border-fk-line bg-fk-bg px-3.5 py-2 text-[13px] font-bold transition hover:bg-fk-line/60"
@@ -528,21 +600,29 @@ export default function CustomerPage() {
         )}
 
         {!loading && !loadError && recommendedItems.length > 0 && (
-          <section className="scroll-mt-[136px] pt-6">
+          <section className="scroll-mt-[184px] pt-6">
             <h2 className="mb-3 flex items-center gap-2 px-4 font-display text-[22px] font-extrabold uppercase leading-none">
               <span className="h-5 w-1.5 rounded-full bg-fk-yellow" aria-hidden />
               Recommended
             </h2>
             <div className="grid grid-cols-2 gap-3 px-3.5 sm:grid-cols-3">
               {recommendedItems.map((item) => (
-                <ProductCard key={`recommended-${item.id}`} item={item} qty={qtyOf(item.id)} onChange={(d) => changeQty(item, d)} />
+                <ProductCard
+                  key={`recommended-${item.id}`}
+                  item={item}
+                  qty={qtyOf(item.id)}
+                  specialNote={cart.find((line) => line.item.id === item.id)?.specialNote ?? ''}
+                  onChange={(d) => changeQty(item, d)}
+                  onNoteChange={changeSpecialNote}
+                  onDetails={setSelectedItem}
+                />
               ))}
             </div>
           </section>
         )}
 
         {!loading && !loadError && sections.map(({ category, items: rows }) => (
-          <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-[136px] pt-6">
+          <section key={category.id} id={`cat-${category.id}`} className="scroll-mt-[184px] pt-6">
             <h2 className="mb-3 flex items-center gap-2 px-4 font-display text-[22px] font-extrabold uppercase leading-none">
               <span className="h-5 w-1.5 rounded-full bg-fk-red" aria-hidden />
               {category.name}
@@ -550,7 +630,16 @@ export default function CustomerPage() {
             </h2>
             <div className="grid grid-cols-1 gap-3 px-3.5">
               {rows.map((item) => (
-                <ProductCard key={item.id} item={item} qty={qtyOf(item.id)} onChange={(d) => changeQty(item, d)} compact />
+                <ProductCard
+                  key={item.id}
+                  item={item}
+                  qty={qtyOf(item.id)}
+                  specialNote={cart.find((line) => line.item.id === item.id)?.specialNote ?? ''}
+                  onChange={(d) => changeQty(item, d)}
+                  onNoteChange={changeSpecialNote}
+                  onDetails={setSelectedItem}
+                  compact
+                />
               ))}
             </div>
           </section>
@@ -635,6 +724,18 @@ export default function CustomerPage() {
         )}
       </AnimatePresence>
 
+      {/* Item details modal */}
+      <AnimatePresence>
+        {selectedItem && (
+          <ItemDetailsModal
+            item={selectedItem}
+            qty={qtyOf(selectedItem.id)}
+            onChange={(delta) => changeQty(selectedItem, delta)}
+            onClose={() => setSelectedItem(null)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Cart sheet */}
       <AnimatePresence>
         {cartOpen && (
@@ -687,21 +788,84 @@ export default function CustomerPage() {
 
 // ── Small pieces ─────────────────────────────────────────────────────────────
 
+function OfferBanner({ promotions }: { promotions: Promotion[] }) {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    setIndex(0)
+  }, [promotions])
+
+  useEffect(() => {
+    if (promotions.length < 2) return
+    const timer = window.setInterval(() => setIndex((current) => (current + 1) % promotions.length), 5000)
+    return () => window.clearInterval(timer)
+  }, [promotions.length])
+
+  const promotion = promotions[index]
+  return (
+    <section className="mx-4 mt-4 overflow-hidden rounded-2xl bg-fk-ink text-white shadow-lg">
+      <div className="relative aspect-[2/1] min-h-[150px]">
+        {promotion?.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={promotion.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        ) : (
+          <>
+            <div className="absolute inset-0 bg-gradient-to-br from-fk-ink via-fk-ink to-fk-red" />
+            <div className="absolute -right-6 -top-10 h-28 w-28 rounded-full bg-fk-red/80" aria-hidden />
+            <div className="absolute -bottom-12 right-14 h-24 w-24 rounded-full bg-fk-yellow/20" aria-hidden />
+          </>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 px-5 py-4">
+          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fk-yellow">Fried King offers</p>
+          <h2 className="mt-1 font-display text-xl font-extrabold uppercase leading-tight">
+            {promotion?.title ?? 'Crispy cravings, sorted.'}
+          </h2>
+          <p className="mt-1 text-xs text-white/80">
+            {promotion?.description ?? 'Pick your favourites and add a note for the kitchen.'}
+          </p>
+        </div>
+        {promotions.length > 1 && (
+          <div className="absolute bottom-4 right-4 flex gap-1.5" aria-label="Offer banners">
+            {promotions.map((item, itemIndex) => (
+              <button
+                key={item.id}
+                onClick={() => setIndex(itemIndex)}
+                aria-label={`Show offer ${itemIndex + 1}`}
+                className={`h-1.5 rounded-full transition-all ${itemIndex === index ? 'w-5 bg-white' : 'w-1.5 bg-white/50'}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function ProductCard({
   item,
   qty,
+  specialNote,
   onChange,
+  onNoteChange,
+  onDetails,
   compact = false,
 }: {
   item: MenuItem
   qty: number
+  specialNote: string
   onChange: (delta: number) => void
+  onNoteChange: (id: string, note: string) => void
+  onDetails: (item: MenuItem) => void
   compact?: boolean
 }) {
   return (
-    <article className={`rounded-2xl border border-fk-line bg-white shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition hover:shadow-md ${
+    <article
+      onClick={() => onDetails(item)}
+      className={`cursor-pointer rounded-2xl border border-fk-line bg-white shadow-[0_2px_10px_rgba(0,0,0,0.03)] transition hover:shadow-md ${
       compact ? 'flex min-h-[148px] items-stretch gap-3 p-3' : 'flex flex-col p-2.5'
-    }`}>
+    }`}
+    >
       <div className={compact ? 'order-2 flex w-[122px] shrink-0 flex-col gap-2 self-center' : ''}>
         <div className={`relative overflow-hidden rounded-xl bg-fk-tint ${
           compact ? 'h-[122px] w-[122px]' : 'mb-2 aspect-square w-full'
@@ -724,6 +888,21 @@ function ProductCard({
         <h3 className={`mb-1 line-clamp-2 text-[14px] font-extrabold leading-snug tracking-tight ${compact ? '' : 'min-h-[36px]'}`}>{item.name}</h3>
         {item.description && <p className="mb-2 line-clamp-2 text-[11px] font-medium leading-snug text-fk-muted">{item.description}</p>}
 
+        {qty > 0 && (
+          <label className="mt-1 block" onClick={(event) => event.stopPropagation()}>
+            <span className="sr-only">Special note for {item.name}</span>
+            <textarea
+              value={specialNote}
+              onChange={(event) => onNoteChange(item.id, event.target.value)}
+              onClick={(event) => event.stopPropagation()}
+              maxLength={300}
+              rows={1}
+              placeholder="Special note..."
+              className="min-h-8 w-full resize-y rounded-lg border border-amber-200 bg-amber-50/70 px-2.5 py-1.5 text-[11px] font-medium leading-snug text-fk-ink outline-none placeholder:text-fk-muted focus:border-amber-400 focus:ring-2 focus:ring-amber-200"
+            />
+          </label>
+        )}
+
         <div className="mt-auto flex items-end justify-between gap-1.5 pt-2">
           <span className="rounded bg-fk-yellow px-1.5 py-0.5 text-[13px] font-black leading-none text-fk-ink shadow-sm">
             {formatPrice(item.pricePaise)}
@@ -732,6 +911,70 @@ function ProductCard({
         </div>
       </div>
     </article>
+  )
+}
+
+function ItemDetailsModal({
+  item,
+  qty,
+  onChange,
+  onClose,
+}: {
+  item: MenuItem
+  qty: number
+  onChange: (delta: number) => void
+  onClose: () => void
+}) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-5"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${item.name} details`}
+        className="relative w-full max-w-lg overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:rounded-3xl"
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ type: 'spring', damping: 28, stiffness: 320 }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <button
+          onClick={onClose}
+          aria-label="Close item details"
+          className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 text-white backdrop-blur-sm"
+        >
+          <X className="h-5 w-5" />
+        </button>
+        <div className="aspect-[4/3] bg-fk-tint">
+          {item.imageUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src="/brand/mark-red.png" alt="" className="mx-auto h-full w-[35%] object-contain opacity-80" />
+          )}
+        </div>
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-2"><VegMark veg={item.isVeg} /></div>
+              <h2 className="font-display text-2xl font-extrabold leading-tight">{item.name}</h2>
+              <p className="mt-2 inline-block rounded bg-fk-yellow px-2 py-1 text-sm font-black text-fk-ink">{formatPrice(item.pricePaise)}</p>
+            </div>
+            <QtyControl qty={qty} name={item.name} onChange={onChange} />
+          </div>
+          <p className="mt-4 text-sm leading-relaxed text-fk-muted">
+            {item.description || 'Freshly prepared with Fried King ingredients.'}
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 

@@ -31,6 +31,7 @@ export interface MenuItem {
 export interface CartItem {
   item: MenuItem
   quantity: number
+  specialNote?: string
 }
 
 export interface OrderTotals {

@@ -1,6 +1,6 @@
-import DashboardClient from '../../DashboardClient'
+import Section from '../../sections/Section'
 
-export default async function BranchMenuPage({ params }: { params: Promise<{ branch: string }> }) {
-  const { branch } = await params
-  return <DashboardClient branchSlug={branch} tab="menu" />
+/* Static route kept so old links work; renders the same section as /dashboard/<branch>/menu. */
+export default function BranchMenuPage() {
+  return <Section section="menu" />
 }

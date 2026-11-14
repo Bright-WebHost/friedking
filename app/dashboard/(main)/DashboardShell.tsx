@@ -2,39 +2,127 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { StaffContext } from '@/lib/auth/staff'
+import { canSee, ROLE_LABEL, SECTIONS } from '@/lib/dashboard/access'
+import type { DMeta, DOrder } from '@/lib/dashboard/types'
+import { DashContext, istTime, makeApi, Toaster, type Dash } from './kit'
+import NewOrderAlert from './NewOrderAlert'
 
-type Branch = { id: string; name: string; slug: string }
+type BranchOpt = { id: string; name: string; slug: string }
+
+// ---------------------------------------------------------------- sound (Oceana's chime + siren)
+let audio: AudioContext | null = null
+function beep(freqs: number[], type: OscillatorType, gap: number, len: number, vol: number) {
+  if (!audio) return
+  freqs.forEach((f, i) => {
+    const o = audio!.createOscillator(), g = audio!.createGain(), t = audio!.currentTime + i * gap
+    o.connect(g); g.connect(audio!.destination); o.type = type; o.frequency.value = f
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + len)
+    o.start(t); o.stop(t + len + 0.04)
+  })
+}
+const chime = () => beep([784, 1046, 1318], 'sine', 0.18, 0.26, 0.32)
+const sirenBeat = () => { beep([988, 1318, 988], 'square', 0.22, 0.2, 0.34); navigator.vibrate?.([220, 110, 220]) }
+const soundConsented = () => { try { return localStorage.getItem('fk_sound_ok') === '1' } catch { return false } }
 
 export default function DashboardShell({ staff, children }: { staff: StaffContext; children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
-  const [branches, setBranches] = useState<Branch[]>([])
+  const [, , slugFromUrl, sectionFromUrl] = pathname.split('/')
+  const slug = slugFromUrl && !SECTIONS.some((s) => s.key === slugFromUrl) ? slugFromUrl : ''
+  const api = useMemo(() => makeApi(slug), [slug])
+
+  const [meta, setMeta] = useState<DMeta | null>(null)
+  const [metaError, setMetaError] = useState('')
+  const [branches, setBranches] = useState<BranchOpt[]>([])
+  const [navOpen, setNavOpen] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  const [soundOn, setSoundOn] = useState(false)
+  const [gate, setGate] = useState(false)
+  const busy = useRef(0)
+  const handoff = useRef<Record<string, unknown> | null>(null)
+  const toastTimer = useRef<number | undefined>(undefined)
+
+  const toast = useCallback((msg: string) => {
+    setToastMsg(msg)
+    window.clearTimeout(toastTimer.current)
+    toastTimer.current = window.setTimeout(() => setToastMsg(null), 3400)
+  }, [])
+
+  const reloadMeta = useCallback(async () => {
+    if (!slug) return
+    try {
+      setMeta(await api.get<DMeta>('meta'))
+      setMetaError('')
+    } catch (e) {
+      setMetaError(e instanceof Error ? e.message : 'Could not load the dashboard')
+    }
+  }, [api, slug])
+  useEffect(() => { setMeta(null); void reloadMeta() }, [reloadMeta])
 
   useEffect(() => {
     fetch('/api/dashboard/me', { cache: 'no-store' })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Unable to load dashboard')
-        return res.json()
+      .then(async (r) => {
+        const data = await r.json()
+        if (!r.ok) throw new Error(data.message ?? 'Could not load branches')
+        setBranches(data.branches ?? [])
       })
-      .then((data: { branches: Branch[] }) => setBranches(data.branches))
-      .catch(() => undefined)
+      .catch((error) => setMetaError(error instanceof Error ? error.message : 'Could not load branches'))
   }, [])
 
-  const selectedBranch = pathname.split('/')[2] && !['orders', 'menu'].includes(pathname.split('/')[2])
-    ? pathname.split('/')[2]
-    : null
-  const activeBranch = selectedBranch ? branches.find((branch) => branch.slug === selectedBranch) : null
-  const defaultBranch = staff.branchId ? branches.find((branch) => branch.id === staff.branchId) : null
-  const branchSlug = activeBranch?.slug ?? defaultBranch?.slug ?? null
-  const base = branchSlug ? `/dashboard/${branchSlug}` : '/dashboard'
+  // The root /dashboard route can briefly render before its server redirect completes.
+  // Resolve it client-side as well so the shell never waits for a branch-less API URL.
+  useEffect(() => {
+    if (slug || branches.length === 0) return
+    const section = SECTIONS.find((candidate) => canSee(staff.role, candidate.key))?.key ?? 'orders'
+    router.replace(`/dashboard/${branches[0].slug}/${section}`)
+  }, [branches, router, slug, staff.role])
 
-  const nav = useMemo(() => [
-    { href: `${base}/orders`, label: 'Orders', icon: '▣' },
-    { href: `${base}/menu`, label: 'Menu', icon: '☷' },
-  ], [base])
+  // ---- sound + wake lock + shift gate
+  const enableSound = useCallback(() => {
+    try {
+      audio = audio ?? new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+      void audio.resume()
+    } catch { /* no audio */ }
+    setSoundOn(true)
+    try { localStorage.setItem('fk_sound_ok', '1') } catch { /* storage blocked */ }
+    try { if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission() } catch { /* unsupported */ }
+  }, [])
+  const keepAwake = useCallback(async () => {
+    try { await (navigator as Navigator & { wakeLock?: { request: (t: 'screen') => Promise<unknown> } }).wakeLock?.request('screen') } catch { /* not allowed */ }
+  }, [])
+  useEffect(() => {
+    if (soundConsented()) {
+      // Audio needs one gesture per tab: the next tap anywhere unlocks it silently.
+      const unlock = () => enableSound()
+      document.addEventListener('pointerdown', unlock, { once: true })
+      setSoundOn(true)
+      return () => document.removeEventListener('pointerdown', unlock)
+    }
+    if (window.innerWidth <= 860) setGate(true)
+  }, [enableSound])
+  useEffect(() => {
+    void keepAwake()
+    const vis = () => { if (!document.hidden) void keepAwake() }
+    document.addEventListener('visibilitychange', vis)
+    return () => document.removeEventListener('visibilitychange', vis)
+  }, [keepAwake])
+
+  const ping = useCallback(() => { if (soundOn) chime() }, [soundOn])
+
+  const dash = useMemo<Dash | null>(() => meta && slug ? {
+    slug, api, branch: meta.branch, settings: meta.settings, riders: meta.riders, staff: meta.staff,
+    toast, reloadMeta, busy, handoff,
+    sound: { on: soundOn, enable: enableSound, ping },
+    go: (section, state) => { handoff.current = state ?? null; router.push(`/dashboard/${slug}/${section}`) },
+    updated: (when) => setUpdatedAt(when ?? new Date()),
+  } : null, [meta, slug, api, toast, reloadMeta, soundOn, enableSound, ping, router])
+
+  const nav = SECTIONS.filter((s) => canSee(staff.role, s.key))
+  const active = SECTIONS.find((s) => s.key === sectionFromUrl) ?? nav[0]
 
   const signOut = async () => {
     await createClient().auth.signOut()
@@ -42,40 +130,79 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
     router.refresh()
   }
 
+  const notify = useCallback((o: DOrder) => {
+    try {
+      if (!('Notification' in window) || Notification.permission !== 'granted') return
+      const n = new Notification(`🔔 New ${o.order_type === 'pickup' ? 'takeaway' : o.order_type} order`, {
+        body: `${o.customer?.name || 'Guest'} · ₹${(o.total_paise / 100).toFixed(0)}`, tag: `fk-${o.order_number}`, requireInteraction: true,
+      })
+      n.onclick = () => { window.focus(); n.close() }
+    } catch { /* unsupported */ }
+  }, [])
+
   return (
-    <div className="min-h-dvh bg-fk-bg">
-      <header className="sticky top-0 z-30 border-b border-fk-line bg-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-red.png" alt="Fried King" className="h-10 w-auto" />
-          <span className="hidden font-display text-xl font-extrabold uppercase sm:block">Staff dashboard</span>
-          <div className="ml-auto flex items-center gap-2">
-            {staff.branchId === null && branches.length > 0 && (
-              <select
-                className="max-w-[150px] rounded-lg border border-fk-line bg-white px-2 py-2 text-sm font-semibold outline-none focus:border-fk-red"
-                value={activeBranch?.slug ?? ''}
-                onChange={(event) => router.push(event.target.value ? `/dashboard/${event.target.value}/orders` : '/dashboard/orders')}
-              >
-                <option value="">All branches</option>
-                {branches.map((branch) => <option key={branch.id} value={branch.slug}>{branch.name}</option>)}
-              </select>
-            )}
-            <button onClick={signOut} className="rounded-lg border border-fk-line px-3 py-2 text-sm font-bold hover:bg-fk-bg">Sign out</button>
+    <div className="fkd">
+      {gate && (
+        <div id="shiftgate">
+          <div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/logo-white.png" alt="Fried King" />
+            <h1>Start your shift</h1>
+            <p>This device will stay awake and ring on every new order for the rest of the shift. Tap once to begin.</p>
+            <button className="btn" onClick={() => { enableSound(); chime(); void keepAwake(); setGate(false) }}>🔔 Start shift · enable sound</button>
+            <button className="ghostbtn" onClick={() => setGate(false)}>Skip for now</button>
           </div>
         </div>
-      </header>
-      <div className="mx-auto flex max-w-6xl gap-6 px-4 py-5">
-        <aside className="hidden w-44 shrink-0 md:block">
-          <nav className="sticky top-[84px] space-y-1">
-            {nav.map((item) => (
-              <Link key={item.href} href={item.href} className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold ${pathname.startsWith(item.href) ? 'bg-fk-red text-white' : 'text-fk-ink hover:bg-white'}`}>
-                <span aria-hidden>{item.icon}</span>{item.label}
+      )}
+      <div className="shell">
+        <aside className={navOpen ? 'open' : ''}>
+          <div className="brandwrap">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/logo-white.png" alt="Fried King" />
+            <div className="kicker">ORDER HUB</div>
+          </div>
+          <div className="checker" />
+          <nav aria-label="Dashboard">
+            {nav.map((s) => (
+              <Link key={s.key} href={slug ? `/dashboard/${slug}/${s.key}` : '/dashboard'} aria-current={active?.key === s.key ? 'page' : undefined} onClick={() => setNavOpen(false)}>
+                <span aria-hidden style={{ width: 20, textAlign: 'center' }}>{s.icon}</span>{s.label}
               </Link>
             ))}
           </nav>
-          <p className="mt-6 break-all px-3 text-xs text-fk-muted">{staff.email}</p>
+          <div className="side-foot">
+            <span className="roletag">{(meta?.staff.name ?? staff.name)} · {ROLE_LABEL[staff.role]}</span>
+            {staff.branchId === null && branches.length > 1 && (
+              <select aria-label="Branch" value={slug} onChange={(e) => router.push(`/dashboard/${e.target.value}/${active?.key ?? 'orders'}`)}>
+                {branches.map((b) => <option key={b.id} value={b.slug}>{b.name}</option>)}
+              </select>
+            )}
+            <button onClick={() => { router.refresh(); window.dispatchEvent(new Event('fk-refresh')); toast('Refreshed') }}>↻ Refresh now</button>
+            <button onClick={() => { enableSound(); chime() }} disabled={soundOn}>{soundOn ? '🔔 Sound on' : '🔔 Enable sound'}</button>
+            <button onClick={signOut}>Sign out</button>
+          </div>
         </aside>
-        <main className="min-w-0 flex-1">{children}</main>
+        {navOpen && <div className="navbackdrop" onClick={() => setNavOpen(false)} />}
+        <main>
+          <div className="head">
+            <button id="mmenu" aria-label="Open menu" onClick={() => setNavOpen(true)}>☰</button>
+            <h1>{active ? `${active.icon} ${active.label}` : 'Dashboard'}</h1>
+            <div className="pills">
+              <span className="pilb ok">● Live</span>
+              <span className="pilb deskonly">Updated {updatedAt ? istTime(updatedAt) : '—'}</span>
+              {meta && <span className="pilb">{meta.branch.name}</span>}
+              {!soundOn && <button className="pilb warn" onClick={() => { enableSound(); chime() }}>🔕 Tap to enable sound</button>}
+            </div>
+          </div>
+          {metaError ? <div className="none">{metaError}</div>
+            : !dash ? <div className="none">Loading…</div>
+              : (
+                <DashContext.Provider value={dash}>
+                  {children}
+                  <NewOrderAlert onNew={(o) => { notify(o); if (soundOn) chime() }} sirenBeat={() => { if (soundOn) sirenBeat() }} />
+                  <Toaster msg={toastMsg} />
+                </DashContext.Provider>
+              )}
+        </main>
       </div>
     </div>
   )
