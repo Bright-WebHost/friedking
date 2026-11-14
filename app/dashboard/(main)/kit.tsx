@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom'
 import type { DBranch, DMeta, DOrder, DRider } from '@/lib/dashboard/types'
 import type { SettingKey } from '@/lib/dashboard/settings'
 import type { StaffRole } from '@/lib/dashboard/access'
+import { normalizePhone } from '@/lib/utils'
 
 // ---------------------------------------------------------------- API
 
@@ -374,18 +375,20 @@ export function printReceipt(o: DOrder, branch: DBranch, settings: Record<Settin
     <hr><div class="c">${esc(settings.tagline || 'Thank you!')}</div>`)
 }
 
-export function printTableQR(tableNumber: number, whatsapp: string) {
-  const num = whatsapp.replace(/\D/g, '')
-  const url = num ? `https://wa.me/${num.length === 10 ? `91${num}` : num}?text=${encodeURIComponent(`Hi, I'm at Table ${tableNumber}`)}` : ''
+export function printTableQR(tableNumber: number, whatsapp: string): boolean {
+  const phone = normalizePhone(whatsapp)
+  if (!phone) return false
+  const url = `https://wa.me/${phone.slice(1)}?text=${encodeURIComponent(`Hi, I'm at Table ${tableNumber}`)}`
   const img = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&margin=10&data=${encodeURIComponent(url || `Table ${tableNumber}`)}`
   const w = window.open('', '_blank', 'width=420,height=640')
-  if (!w) return
+  if (!w) return false
   w.document.write(`<html><head><title>Table ${tableNumber} QR</title><style>body{font-family:system-ui,sans-serif;text-align:center;padding:26px}
     h1{font-size:40px;margin:0;color:#ec1c23}.s{letter-spacing:3px;color:#6b6f78;font-size:12px}h2{font-size:34px;margin:14px 0}img{width:300px;height:300px}p{color:#6b6f78;font-size:13px;margin:6px 0}</style></head><body>
     <h1>FRIED KING</h1><div class="s">GROWING THE CRISPIEST BITES</div><h2>TABLE ${tableNumber}</h2><img src="${img}" alt="QR">
-    <p><b>Scan to order on WhatsApp</b></p><p>${url ? 'No app needed · Opens WhatsApp' : 'Add the branch WhatsApp number in Settings for a working link'}</p></body></html>`)
+    <p><b>Scan to order on WhatsApp</b></p><p>No app needed · Opens WhatsApp</p></body></html>`)
   w.document.close()
   setTimeout(() => { w.focus(); w.print() }, 900)
+  return true
 }
 
 export { esc, printHtml }

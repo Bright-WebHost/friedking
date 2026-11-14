@@ -7,7 +7,7 @@ import type { Handler } from './index'
 export async function loadCustomers(ctx: Ctx) {
   const [customers, orders, accounts] = await Promise.all([
     ctx.admin.from('customers').select('*').eq('branch_id', ctx.branch.id).order('created_at', { ascending: false }).limit(5000),
-    ctx.admin.from('orders').select('customer_id, created_at, status').eq('branch_id', ctx.branch.id).neq('status', 'cancelled').limit(20000),
+    ctx.admin.from('orders').select('customer_id, created_at, status').eq('branch_id', ctx.branch.id).in('status', ['pending', 'confirmed', 'preparing', 'ready', 'delivered']).limit(20000),
     ctx.admin.from('loyalty_accounts').select('customer_id, points_balance, lifetime_points, tier'),
   ])
   const stats = new Map<string, { n: number; last: string }>()
@@ -50,7 +50,7 @@ export async function loadMenu(ctx: Ctx) {
 async function popular(ctx: Ctx) {
   const rank = async (since: string | null) => {
     let q = ctx.admin.from('order_items').select('menu_item_id, quantity, orders!inner(branch_id, created_at, status)')
-      .eq('orders.branch_id', ctx.branch.id).neq('orders.status', 'cancelled')
+      .eq('orders.branch_id', ctx.branch.id).in('orders.status', ['pending', 'confirmed', 'preparing', 'ready', 'delivered'])
     if (since) q = q.gte('orders.created_at', since)
     const rows = (await q.limit(20000)).data ?? []
     const agg = new Map<string, number>()

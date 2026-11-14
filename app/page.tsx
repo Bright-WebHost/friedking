@@ -137,7 +137,8 @@ export default function CustomerPage() {
   // ── First load: read ?branch= and ?phone= (the WhatsApp bot link carries both) ──
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    const p = normalizePhone(params.get('phone') ?? '')
+    // The n8n WhatsApp buttons send the number as ?ph=; older links use ?phone=.
+    const p = normalizePhone(params.get('phone') ?? params.get('ph') ?? '')
     if (p) setPhone(p.slice(3))
     const slug = ONLY_BRANCH ?? params.get('branch')?.trim().toLowerCase()
     if (slug) loadMenu(slug)

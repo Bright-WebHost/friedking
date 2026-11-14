@@ -149,7 +149,11 @@ export default function Tables() {
                   <button onClick={() => move(t, s)}>Move</button>
                   <button onClick={() => merge(t, s)}>Merge</button>
                 </> : <button className="go" onClick={() => startRound(t)}>Start order</button>}
-                <button onClick={() => printTableQR(t.table_number, settings.whatsapp_number)}>QR</button>
+                <button onClick={() => {
+                  if (!printTableQR(t.table_number, settings.whatsapp_number)) {
+                    toast('Add a valid 10-digit WhatsApp number in Settings before printing table QR codes')
+                  }
+                }}>QR</button>
                 <button onClick={() => void history(t)}>History</button>
               </div>
             </div>

@@ -96,7 +96,10 @@ Decisions (Maithri, 2026-11-14):
 - Roles: owner (all sections, all branches), manager (no Contacts, Blast, Settings), staff (POS, Orders, Tables).
 - Stock moves only through `fk_stock_move` / `fk_order_stock` (deduct on accept or POS create, restore on cancel). Points are earned via `fk_loyalty_earn` when an order is marked delivered.
 
+**WhatsApp bot** (n8n `Fried King | Main` on staff.brightmedia.tech, YCloud number 9742175222, Pandeshwar only). Database side is `supabase/friedking_whatsapp_bot.sql`: `chat_context`, `customer_draft`, `customer_amend`, `customer_confirm`, `customer_cancel`, `receipt_order` (all take `p_branch`, default `pandeshwar`). Chat lives in `chat_messages` / `chat_sessions` (what Live Chat reads). A WhatsApp order starts as an `orders` row with status `draft` (hidden from the dashboard, which filters by real statuses); Confirm makes it `pending` and writes the normal `order_created` event (`source: whatsapp`); amending a pending order writes `order_amended`. Customer-facing order numbers are `FK-<order_number>`. Menu link comes from `branch_settings.menu_url` (default `https://friedking.vercel.app/`; the bot appends `?ph=<phone>`). The workflow carries the Pandeshwar branch id in its chat nodes; a second branch needs its own copy.
+
 Not done yet:
+- Bot: `Open Table Session` calls the webhook `friedking-table-open` (workflow `Dine-In & Dispatch`, inactive), so table QR scans do not work yet. `Fried King | Status Notifier` (order_events -> YCloud) is still the old version and inactive. Rider "Payment collected" button is a stub. The Route node's opening hours are hard-coded 7:00 to 23:30, not the branch hours.
 - AI Assistant.
 - Customer checkout does not yet use the dashboard's minimum order, delivery fee, pincodes or order-type settings (client rules unknown).
 - No phone verification at checkout (OTP functions exist, not called). No item variants UI.

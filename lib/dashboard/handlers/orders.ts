@@ -112,10 +112,12 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
 }
 
 const STATUSES: Status[] = ['pending', 'preparing', 'ready', 'delivered', 'cancelled']
+const REAL_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled']
 const DECLINE_REASONS = ['Item unavailable', 'Kitchen full', 'Outside delivery area', 'Closing soon']
 
 export async function loadOrders(ctx: Ctx, opts: { since?: string | null; until?: string | null; limit?: number; sessionIds?: string[] }) {
-  let q = ctx.admin.from('orders').select(ORDER_SELECT).eq('branch_id', ctx.branch.id)
+  // Drafts (WhatsApp orders the customer has not confirmed) are not orders yet.
+  let q = ctx.admin.from('orders').select(ORDER_SELECT).eq('branch_id', ctx.branch.id).in('status', REAL_STATUSES)
   if (opts.since) q = q.gte('created_at', opts.since)
   if (opts.until) q = q.lt('created_at', opts.until)
   if (opts.sessionIds) q = q.in('table_session_id', opts.sessionIds.length ? opts.sessionIds : ['00000000-0000-0000-0000-000000000000'])
