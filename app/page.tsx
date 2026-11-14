@@ -803,8 +803,8 @@ function OfferBanner({ promotions }: { promotions: Promotion[] }) {
 
   const promotion = promotions[index]
   return (
-    <section className="mx-4 mt-4 overflow-hidden rounded-2xl bg-fk-ink text-white shadow-lg">
-      <div className="relative aspect-[2/1] min-h-[150px]">
+    <section className="w-full overflow-hidden bg-fk-ink">
+      <div className="relative aspect-[2/1] w-full">
         {promotion?.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={promotion.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -815,16 +815,6 @@ function OfferBanner({ promotions }: { promotions: Promotion[] }) {
             <div className="absolute -bottom-12 right-14 h-24 w-24 rounded-full bg-fk-yellow/20" aria-hidden />
           </>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 px-5 py-4">
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fk-yellow">Fried King offers</p>
-          <h2 className="mt-1 font-display text-xl font-extrabold uppercase leading-tight">
-            {promotion?.title ?? 'Crispy cravings, sorted.'}
-          </h2>
-          <p className="mt-1 text-xs text-white/80">
-            {promotion?.description ?? 'Pick your favourites and add a note for the kitchen.'}
-          </p>
-        </div>
         {promotions.length > 1 && (
           <div className="absolute bottom-4 right-4 flex gap-1.5" aria-label="Offer banners">
             {promotions.map((item, itemIndex) => (
