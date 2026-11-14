@@ -537,8 +537,9 @@ export default function CustomerPage() {
               }}
               className="flex w-[74px] shrink-0 flex-col items-center gap-1.5"
             >
-              <span className={`grid h-16 w-16 place-items-center rounded-full border-2 bg-fk-tint text-2xl ${selectedCategoryId === null ? 'border-fk-red' : 'border-transparent'}`}>
-                🍽️
+              <span className={`h-16 w-16 overflow-hidden rounded-full bg-fk-tint ${selectedCategoryId === null ? 'border-2 border-fk-red p-0.5' : 'border-2 border-transparent'}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/menu/5-pcs-combo.webp" alt="" className="h-full w-full rounded-full object-cover" />
               </span>
               <span className={`max-w-[74px] truncate text-xs font-bold ${selectedCategoryId === null ? 'text-fk-red' : 'text-fk-muted'}`}>All</span>
             </button>
