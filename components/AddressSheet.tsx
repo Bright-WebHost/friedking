@@ -11,7 +11,7 @@ const input =
   'w-full rounded-xl border border-fk-line bg-white px-4 py-3.5 text-base sm:text-sm placeholder:text-fk-muted/70 outline-none transition focus:border-fk-red focus:ring-1 focus:ring-fk-red'
 
 /**
- * "Add delivery address" bottom sheet, laid out like Zomato / Swiggy: pincode first (checked against the branch's delivery area),
+ * "Add delivery address" bottom sheet, laid out like Zomato / Swiggy: pincode first (optional, checked when provided),
  * then flat / building, area, landmark and a Home / Work / Other tag.
  */
 export default function AddressSheet({ rules, initial, onSave, onClose }: {
@@ -31,11 +31,11 @@ export default function AddressSheet({ rules, initial, onSave, onClose }: {
 
   const restricted = (rules?.pincodes.length ?? 0) > 0
   const match = rules?.pincodes.find((p) => p.pincode === pincode)
-  const complete = /^\d{6}$/.test(pincode)
-  const deliverable = !complete ? null : restricted ? Boolean(match) : true
+  const complete = !pincode || /^\d{6}$/.test(pincode)
+  const deliverable = !pincode ? null : restricted ? Boolean(match) : true
 
   const save = () => {
-    if (!complete) return setError('Enter the 6-digit pincode.')
+    if (!complete) return setError('Enter a valid 6-digit pincode, or leave it blank.')
     if (deliverable === false) return setError(`Sorry, we do not deliver to ${pincode} yet.`)
     if (!house.trim() && !initial?.text) return setError('Enter your flat / house number or building name.')
     if (!area.trim()) return setError('Enter your area or street.')
@@ -58,11 +58,11 @@ export default function AddressSheet({ rules, initial, onSave, onClose }: {
 
         <div className="space-y-3 overflow-y-auto px-5 py-4">
           <div>
-            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-fk-muted" htmlFor="addr-pin">Pincode</label>
+            <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-fk-muted" htmlFor="addr-pin">Pincode <span className="font-medium normal-case">(optional)</span></label>
             <div className={`flex items-center rounded-xl border bg-white transition focus-within:ring-1 ${deliverable === false ? 'border-red-400 ring-red-300' : deliverable ? 'border-green-500 ring-green-400' : 'border-fk-line focus-within:border-fk-red focus-within:ring-fk-red'}`}>
               <MapPin className="ml-3.5 h-4 w-4 shrink-0 text-fk-red" />
               <input id="addr-pin" className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm" inputMode="numeric" autoComplete="postal-code"
-                maxLength={6} placeholder="6-digit pincode" value={pincode}
+                maxLength={6} placeholder="6-digit pincode (optional)" value={pincode}
                 onChange={(e) => { setPincode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }} />
               {deliverable && <Check className="mr-3.5 h-4 w-4 shrink-0 text-green-600" strokeWidth={3} />}
             </div>

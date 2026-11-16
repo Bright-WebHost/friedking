@@ -1,4 +1,4 @@
-/** A delivery address as the customer builds it: label (Home / Work / Other), the text, and the 6-digit pincode. */
+/** A delivery address as the customer builds it: label (Home / Work / Other), text, and an optional pincode. */
 export interface DeliveryAddress {
   label: string
   /** Flat / house, area, landmark, city. No pincode. */

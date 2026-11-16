@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   if (orderType !== 'pickup' && orderType !== 'delivery' && orderType !== 'dine-in') return bad('Invalid order type')
   if (isDineIn && (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 999)) return bad('Invalid table')
   if (!isDineIn && !phone && !verifySecret) return bad('Please enter a valid 10-digit mobile number')
-  if (orderType === 'delivery' && !/^\d{6}$/.test(pincode)) return bad('Please enter a valid 6-digit pincode')
+  if (orderType === 'delivery' && pincode && !/^\d{6}$/.test(pincode)) return bad('Please enter a valid 6-digit pincode, or leave it blank')
   if (paymentMethod !== 'cash') return bad('Invalid payment method')
   if (orderType === 'delivery' && !address) return bad('Please enter your delivery address')
   if (!idempotencyKey) return bad('Invalid request')
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     if (isDineIn && !rules.dineIn) return bad('Dine-in ordering is not available right now.')
     if (orderType === 'delivery') {
       if (!rules.delivery) return bad('Delivery is not available right now.')
-      if (rules.pincodes.length && !rules.pincodes.some((p) => p.pincode === pincode)) return bad(`Sorry, we do not deliver to ${pincode} yet.`)
+      if (pincode && rules.pincodes.length && !rules.pincodes.some((p) => p.pincode === pincode)) return bad(`Sorry, we do not deliver to ${pincode} yet.`)
       if (totals.subtotalPaise < rules.minOrderPaise) return bad(`Minimum order for delivery is ₹${rules.minOrderPaise / 100}.`)
       deliveryFeePaise = deliveryFeeFor(rules, totals.subtotalPaise)
     }

@@ -152,7 +152,7 @@ export default function CustomerPage() {
         .then(readJson).then((d) => { if (d.rules) setRules(d.rules) }).catch(() => undefined)
       try {
         const last = JSON.parse(localStorage.getItem('fk-addr') ?? 'null')
-        if (last && typeof last.text === 'string' && /^\d{6}$/.test(last.pincode ?? '')) setAddr(last)
+        if (last && typeof last.text === 'string' && (!last.pincode || /^\d{6}$/.test(last.pincode))) setAddr(last)
       } catch { /* storage unavailable */ }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Unable to load menu')
@@ -276,7 +276,7 @@ export default function CustomerPage() {
     wasUnlocked.current = unlocked
   }, [unlocked])
   const minOrderShort = isDelivery && rules && rules.minOrderPaise > totals.subtotalPaise ? rules.minOrderPaise - totals.subtotalPaise : 0
-  const pincodeOk = !isDelivery || !addr || !rules?.pincodes.length || rules.pincodes.some((p) => p.pincode === addr.pincode)
+  const pincodeOk = !isDelivery || !addr || !addr.pincode || !rules?.pincodes.length || rules.pincodes.some((p) => p.pincode === addr.pincode)
 
   // ── Menu filtering, grouped by category ───────────────────────────────────
   const sections = useMemo(() => {
@@ -613,7 +613,6 @@ export default function CustomerPage() {
                           <span className="block text-sm font-extrabold">{c.label || 'Address'}{selected && <Check className="ml-1.5 inline h-4 w-4 text-green-600" strokeWidth={3} />}</span>
                           <span className="mt-0.5 block text-[13px] leading-snug text-fk-muted">{c.text}{c.pincode ? ` - ${c.pincode}` : ''}</span>
                           {blocked && <span className="mt-1 block text-xs font-semibold text-red-600">We do not deliver to this pincode yet</span>}
-                          {!c.pincode && <span className="mt-1 block text-xs font-semibold text-amber-700">Tap to add the pincode</span>}
                         </span>
                         {selected && <button type="button" onClick={(e) => { e.stopPropagation(); setAddrDraft(c); setAddrOpen(true) }} className="shrink-0 text-xs font-bold text-fk-red">Edit</button>}
                       </div>
