@@ -79,19 +79,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(placed, { status: 200 })
     }
 
-    // Direct web orders must prove the phone by WhatsApp message (skipped for link-token orders and while the SQL is not installed).
+    // Every web order must prove the phone by a WhatsApp message (skipped only while the SQL is not installed).
     let verificationId: string | null = null
-    if (!link) {
-      if (await verificationEnabled(supabase)) {
-        const { data: v } = verifySecret
-          ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at').eq('secret', verifySecret).maybeSingle()
-          : { data: null }
-        if (!v || !v.verified_at || v.consumed_at || !v.phone) return bad('Please verify your WhatsApp number first.', 403)
-        phone = v.phone as string
-        verificationId = v.id as string
-      } else if (!phone) {
-        return bad('Please enter a valid 10-digit mobile number')
-      }
+    if (await verificationEnabled(supabase)) {
+      const { data: v } = verifySecret
+        ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at').eq('secret', verifySecret).maybeSingle()
+        : { data: null }
+      if (!v || !v.verified_at || v.consumed_at || !v.phone) return bad('Please verify your WhatsApp number first.', 403)
+      if (link && v.phone !== link.phone) return bad('Please verify from the same WhatsApp number you chatted with.', 403)
+      phone = v.phone as string
+      verificationId = v.id as string
+    } else if (!phone) {
+      return bad('Please enter a valid 10-digit mobile number')
     }
 
     const { data: branch } = await supabase

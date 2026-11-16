@@ -256,7 +256,7 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (!branch || submitting) return
-    const needVerify = !linked && !!verify?.enabled
+    const needVerify = !!verify?.enabled
     const e164 = linked || needVerify ? '' : normalizePhone(phone)
     if (!name.trim()) return setFormError('Please enter your name.')
     if (needVerify && !verified) return setFormError('Please verify your WhatsApp number first.')
@@ -301,7 +301,7 @@ export default function CustomerPage() {
   }
 
   useEffect(() => {
-    if (screen === 'checkout' && !linked && !verify && !verifyBusy) void startVerify()
+    if (screen === 'checkout' && !verify && !verifyBusy) void startVerify()
   }, [screen, linked, verify, verifyBusy, startVerify])
   useEffect(() => {
     if (screen !== 'checkout' || !verify?.enabled || verified) return
@@ -459,7 +459,7 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              {!linked && verify?.enabled && (verified ? (
+              {verify?.enabled && (verified ? (
                 <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
                   <Check className="h-5 w-5 shrink-0 text-green-700" strokeWidth={3} />
                   <div className="min-w-0 flex-1">
