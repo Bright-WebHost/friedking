@@ -108,6 +108,8 @@ Decisions (Maithri, 2026-11-14):
 
 **Dashboard AI Assistant:** page `/dashboard/<branch>/ai` -> handler `ai.ts` builds a read-only data snapshot -> n8n workflow `Fried King | Dashboard AI` (webhook URL stored in `branch_settings.ai_webhook_url`) -> OpenAI `gpt-4.1-mini` via the n8n credential `Fried King | OpenAI` (same as the bot). Needs a real OpenAI key in that credential.
 
+**Dashboard speed + look:** `getStaffContext` remembers a verified sign-in for 45 s per access token and `resolveCtx` caches the branch row for 60 s (cleared when Settings saves) and runs both lookups in parallel, so polling no longer pays 3 round trips per request. The shell keeps the last `meta` in sessionStorage so pages open instantly. The header "Updated" time is set by every successful dashboard read (`makeApi(slug, onRead)`). Sidebar is Fried King red; Settings shows a floating "unsaved changes" bar (Save / Discard) and Category images is a collapsed `details.fold` panel.
+
 **Hosting:** `vercel.json` pins functions to `sin1` (Singapore, next to Supabase). Without it Vercel ran them in the US and every request took about 2 s. `/api/menu` and `/api/promotions` are cached at the CDN for 30-60 s.
 
 **Bot opening hours** come from the branch (`branches.opens_at/closes_at`, edited in Dashboard > Settings > Hours), not hard-coded.

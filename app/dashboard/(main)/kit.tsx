@@ -18,14 +18,16 @@ async function readBody(res: Response) {
   return data
 }
 
-export function makeApi(slug: string) {
+export function makeApi(slug: string, onRead?: () => void) {
   const base = `/api/dashboard/${encodeURIComponent(slug)}`
   return {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     get: async <T = any>(domain: string, params?: Record<string, string | number | null | undefined>): Promise<T> => {
       const q = new URLSearchParams()
       for (const [k, v] of Object.entries(params ?? {})) if (v !== null && v !== undefined && v !== '') q.set(k, String(v))
-      return readBody(await fetch(`${base}/${domain}${q.size ? `?${q}` : ''}`, { cache: 'no-store' }))
+      const data = await readBody(await fetch(`${base}/${domain}${q.size ? `?${q}` : ''}`, { cache: 'no-store' }))
+      onRead?.()
+      return data
     },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     post: async <T = any>(domain: string, action: string, body: Record<string, unknown> = {}): Promise<T> =>

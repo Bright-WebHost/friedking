@@ -32,14 +32,13 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
   const router = useRouter()
   const [, , slugFromUrl, sectionFromUrl] = pathname.split('/')
   const slug = slugFromUrl && !SECTIONS.some((s) => s.key === slugFromUrl) ? slugFromUrl : ''
-  const api = useMemo(() => makeApi(slug), [slug])
-
   const [meta, setMeta] = useState<DMeta | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
+  const api = useMemo(() => makeApi(slug, () => setUpdatedAt(new Date())), [slug])
   const [metaError, setMetaError] = useState('')
   const [branches, setBranches] = useState<BranchOpt[]>([])
   const [navOpen, setNavOpen] = useState(false)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
-  const [updatedAt, setUpdatedAt] = useState<Date | null>(null)
   const [soundOn, setSoundOn] = useState(false)
   const [gate, setGate] = useState(false)
   const busy = useRef(0)
@@ -55,13 +54,21 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
   const reloadMeta = useCallback(async () => {
     if (!slug) return
     try {
-      setMeta(await api.get<DMeta>('meta'))
+      const fresh = await api.get<DMeta>('meta')
+      setMeta(fresh)
       setMetaError('')
+      try { sessionStorage.setItem(`fk_meta_${slug}`, JSON.stringify(fresh)) } catch { /* storage blocked */ }
     } catch (e) {
       setMetaError(e instanceof Error ? e.message : 'Could not load the dashboard')
     }
   }, [api, slug])
-  useEffect(() => { setMeta(null); void reloadMeta() }, [reloadMeta])
+  // Show the last known branch/settings straight away (refreshed in the background) so pages do not wait on /meta.
+  useEffect(() => {
+    let cached: DMeta | null = null
+    try { const raw = slug ? sessionStorage.getItem(`fk_meta_${slug}`) : null; cached = raw ? JSON.parse(raw) : null } catch { /* ignore */ }
+    setMeta(cached)
+    void reloadMeta()
+  }, [reloadMeta, slug])
 
   useEffect(() => {
     fetch('/api/dashboard/me', { cache: 'no-store' })
@@ -188,7 +195,7 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
             <h1>{active ? `${active.icon} ${active.label}` : 'Dashboard'}</h1>
             <div className="pills">
               <span className="pilb ok">● Live</span>
-              <span className="pilb deskonly">Updated {updatedAt ? istTime(updatedAt) : '—'}</span>
+              <span className="pilb upd" title="Last time data was fetched">⟳ Updated {istTime(updatedAt ?? new Date())}</span>
               {meta && <span className="pilb">{meta.branch.name}</span>}
               {!soundOn && <button className="pilb warn" onClick={() => { enableSound(); chime() }}>🔕 Tap to enable sound</button>}
             </div>

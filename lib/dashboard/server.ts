@@ -25,17 +25,28 @@ export interface Ctx {
   admin: SupabaseClient
 }
 
-/** Signed-in staff + the branch from the URL, checked against their branch access. */
-export async function resolveCtx(branchSlug: string): Promise<Ctx> {
-  const staff = await getStaffContext()
-  if (!staff) throw new HttpError(401, 'Please sign in again')
-  const admin = createAdminClient()
+const branchCache = new Map<string, { at: number; branch: Ctx['branch'] }>()
+/** Call after the branch profile is edited so the change shows straight away. */
+export function clearBranchCache() { branchCache.clear() }
+
+async function findBranch(admin: Ctx['admin'], slug: string) {
+  const hit = branchCache.get(slug)
+  if (hit && Date.now() - hit.at < 60_000) return hit.branch
   const { data: branch, error } = await admin
     .from('branches')
     .select('id, name, slug, address, phone, opens_at, closes_at')
-    .eq('slug', branchSlug.toLowerCase())
+    .eq('slug', slug)
     .maybeSingle()
   if (error) throw error
+  if (branch) branchCache.set(slug, { at: Date.now(), branch })
+  return branch
+}
+
+/** Signed-in staff + the branch from the URL, checked against their branch access. */
+export async function resolveCtx(branchSlug: string): Promise<Ctx> {
+  const admin = createAdminClient()
+  const [staff, branch] = await Promise.all([getStaffContext(), findBranch(admin, branchSlug.toLowerCase())])
+  if (!staff) throw new HttpError(401, 'Please sign in again')
   if (!branch || !canAccessBranch(staff, branch.id)) throw new HttpError(403, 'You do not have access to this branch')
   return { staff, branch, admin }
 }

@@ -37,6 +37,7 @@ export default function Settings() {
     setS({ ...st, order_types: all.join(', ') })
   }
   const close = () => setModal(null)
+  const dirty = s !== null || b !== null
   const fail = (e: unknown) => toast(e instanceof Error ? e.message : 'Could not save')
 
   const save = async () => {
@@ -60,10 +61,10 @@ export default function Settings() {
         {field('WhatsApp number (table QR codes and invoices)', <input className="f" inputMode="numeric" value={st.whatsapp_number} onChange={setSet('whatsapp_number')} placeholder="e.g. 7337687522" />)}
       </div>
 
-      <div className="panel"><h3>Category images</h3><p className="asub" style={{ marginTop: -6 }}>Shown as the round category icons on the ordering page. Leave blank to keep the default.</p>
+      <details className="panel fold"><summary><h3>Category images</h3><span className="foldhint">{data.categories.length} categories · tap to open</span></summary><p className="asub" style={{ marginTop: -6 }}>Shown as the round category icons on the ordering page. Leave blank to keep the default.</p>
         {data.categories.map((c) => <div className="catimg-row" key={c.id}><Img src={c.image_url} /><div className="grow">{c.name}</div>
           <input type="file" accept="image/*" style={{ maxWidth: 190, fontSize: 11 }} onChange={(e) => void upload('categoryImage', e.target.files?.[0], { categoryId: c.id })} /></div>)}
-      </div>
+      </details>
 
       <div className="panel"><h3>Banners (customer app carousel)</h3><p className="asub" style={{ marginTop: -6 }}>Every active banner rotates on the ordering page. Add as many as you like.</p>
         {data.promotions.length ? data.promotions.map((p) => {
@@ -135,8 +136,6 @@ export default function Settings() {
         <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: -4 }}>Flags any recipe-costed dish whose margin falls below this.</div>
       </div>
 
-      <div className="panel"><button className="btn" style={{ maxWidth: 260 }} disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save settings'}</button></div>
-
       <div className="panel"><h3>Staff &amp; roles</h3>
         <div className="pickbar">
           <input className="f grow" style={{ margin: 0 }} placeholder="Name" value={newStaff.name} onChange={(e) => setNewStaff({ ...newStaff, name: e.target.value })} />
@@ -157,6 +156,13 @@ export default function Settings() {
           </tr>)}
         </tbody></table></div>
       </div>
+      {dirty && (
+        <div className="savebar" role="status">
+          <span>● You have unsaved changes</span>
+          <button className="btn sm ghost" disabled={saving} onClick={() => { setS(null); setB(null) }}>Discard</button>
+          <button className="btn sm" disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'}</button>
+        </div>
+      )}
       {modal}
     </section>
   )

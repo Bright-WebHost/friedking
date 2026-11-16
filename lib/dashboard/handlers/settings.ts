@@ -1,5 +1,5 @@
 import { SETTING_KEYS } from '@/lib/dashboard/settings'
-import { audit, check, getSettings, HttpError, id, optStr, str, uploadImage } from '@/lib/dashboard/server'
+import { audit, check, clearBranchCache, getSettings, HttpError, id, optStr, str, uploadImage } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
 const ROLES = ['owner', 'manager', 'staff']
@@ -41,7 +41,7 @@ export const settingsHandler: Handler = {
       if (b.phone !== undefined) branchUpdate.phone = optStr(b.phone, 20)
       if (b.opensAt !== undefined) branchUpdate.opens_at = time(b.opensAt) ?? ctx.branch.opens_at
       if (b.closesAt !== undefined) branchUpdate.closes_at = time(b.closesAt) ?? ctx.branch.closes_at
-      if (Object.keys(branchUpdate).length) check(await ctx.admin.from('branches').update(branchUpdate).eq('id', ctx.branch.id), 'save the branch')
+      if (Object.keys(branchUpdate).length) { check(await ctx.admin.from('branches').update(branchUpdate).eq('id', ctx.branch.id), 'save the branch'); clearBranchCache() }
 
       const rows = SETTING_KEYS.filter((k) => b.settings && k in b.settings).map((key) => ({
         branch_id: ctx.branch.id, key, value: str(b.settings[key], 1000), updated_at: new Date().toISOString(),
