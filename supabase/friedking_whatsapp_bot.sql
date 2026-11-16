@@ -226,20 +226,28 @@ end $$;
 
 create or replace function public.customer_draft(p_phone text, p_name text, p_items jsonb, p_type text default 'delivery', p_branch text default 'pandeshwar')
 returns jsonb language plpgsql security definer set search_path = public as $$
-declare b branches%rowtype; v_phone text := public.fk_wa_phone(p_phone); v_cust uuid; v_id uuid; v_type text;
+declare b branches%rowtype; v_phone text := public.fk_wa_phone(p_phone); v_cust uuid; v_id uuid; v_type text; v_sid uuid; v_tno int;
 begin
   select * into b from branches where slug = p_branch;
   if not found then return jsonb_build_object('result', 'error'); end if;
   v_type := case lower(coalesce(p_type, '')) when 'takeaway' then 'pickup' when 'pickup' then 'pickup' when 'dine-in' then 'dine-in' else 'delivery' end;
+  -- a customer who scanned a table QR in the last 6 hours is eating in: attach the order to their table
+  select s.id, t.table_number into v_sid, v_tno
+    from table_sessions s join restaurant_tables t on t.id = s.table_id
+   where s.branch_id = b.id and s.status = 'open' and s.phone = v_phone and s.opened_at > now() - interval '6 hours'
+   order by s.opened_at desc limit 1;
+  if v_sid is not null then v_type := 'dine-in';
+  elsif v_type = 'dine-in' then v_type := 'pickup';  -- no table known: treat as takeaway rather than lose track of it
+  end if;
 
   insert into customers (branch_id, phone, name, source) values (b.id, v_phone, nullif(trim(p_name), ''), 'whatsapp')
     on conflict (branch_id, phone) do update set name = coalesce(customers.name, excluded.name)
     returning id into v_cust;
 
-  insert into orders (branch_id, customer_id, status, source, order_type, payment_method, delivery_address, idempotency_key)
+  insert into orders (branch_id, customer_id, status, source, order_type, payment_method, delivery_address, idempotency_key, table_session_id, table_number)
     values (b.id, v_cust, 'draft', 'whatsapp', v_type, 'cash',
             case when v_type = 'delivery' then 'Address to be confirmed with the customer on WhatsApp' end,
-            'wa-' || gen_random_uuid())
+            'wa-' || gen_random_uuid(), case when v_type = 'dine-in' then v_sid end, case when v_type = 'dine-in' then v_tno end)
     returning id into v_id;
   perform public.fk_wa_write_items(v_id, b.id, p_items);
   return jsonb_build_object('result', 'created', 'order', public.fk_wa_order_json(v_id));
@@ -343,6 +351,35 @@ exception when others then
   return jsonb_build_object('result', 'error');
 end $$;
 
+-- ============================================================
+-- Table QR scan ("Hi, I'm at Table 3"): open (or reuse) the table's session and remember who sits there.
+-- ============================================================
+create or replace function public.open_table_session(p_table text, p_phone text, p_name text default null, p_branch text default 'pandeshwar')
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare b branches%rowtype; t restaurant_tables%rowtype; s table_sessions%rowtype; v_phone text := public.fk_wa_phone(p_phone); v_no int;
+begin
+  select * into b from branches where slug = p_branch;
+  -- tables are plain numbers: "A2" or "3rd" must not be read as table 2 / 3
+  v_no := case when trim(coalesce(p_table, '')) ~ '^[0-9]{1,4}$' then trim(p_table)::int end;
+  if not found or v_no is null then return jsonb_build_object('result', 'no_table'); end if;
+  select * into t from restaurant_tables where branch_id = b.id and table_number = v_no and is_active;
+  if not found then return jsonb_build_object('result', 'no_table', 'table_number', v_no); end if;
+
+  select * into s from table_sessions where table_id = t.id and status = 'open';
+  if found then
+    update table_sessions set phone = coalesce(phone, v_phone), customer_name = coalesce(customer_name, nullif(trim(p_name), ''))
+     where id = s.id;
+    -- the scanner is the one eating here now (a new party at a table whose tab was left open)
+    if s.phone is distinct from v_phone and s.opened_at < now() - interval '3 hours' then
+      update table_sessions set phone = v_phone, customer_name = nullif(trim(p_name), '') where id = s.id;
+    end if;
+  else
+    insert into table_sessions (branch_id, table_id, status, opened_by_name, phone, customer_name)
+      values (b.id, t.id, 'open', 'WhatsApp QR', v_phone, nullif(trim(p_name), '')) returning * into s;
+  end if;
+  return jsonb_build_object('result', 'open', 'session_id', s.id, 'table_number', t.table_number);
+end $$;
+
 -- Receipt Image workflow: one order in the shape its template reads (paid / table number included).
 create or replace function public.receipt_order(p_order text, p_branch text default 'pandeshwar')
 returns jsonb language plpgsql stable security definer set search_path = public as $$
@@ -368,13 +405,14 @@ revoke all on function public.customer_amend(text, text, jsonb, numeric, text) f
 revoke all on function public.customer_confirm(text, text, text) from public, anon, authenticated;
 revoke all on function public.customer_cancel(text, text, text, text) from public, anon, authenticated;
 revoke all on function public.rider_confirm_payment(text) from public, anon, authenticated;
+revoke all on function public.open_table_session(text, text, text, text) from public, anon, authenticated;
 revoke all on function public.receipt_order(text, text) from public, anon, authenticated;
 revoke all on function public.fk_wa_order_json(uuid) from public, anon, authenticated;
 revoke all on function public.fk_wa_find_order(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.fk_wa_write_items(uuid, uuid, jsonb) from public, anon, authenticated;
 grant execute on function public.chat_context(text, text, text), public.customer_draft(text, text, jsonb, text, text),
   public.customer_amend(text, text, jsonb, numeric, text), public.customer_confirm(text, text, text),
-  public.customer_cancel(text, text, text, text), public.rider_confirm_payment(text), public.receipt_order(text, text) to service_role;
+  public.customer_cancel(text, text, text, text), public.rider_confirm_payment(text), public.receipt_order(text, text), public.open_table_session(text, text, text, text) to service_role;
 
 -- ============================================================
 -- Check: every row should say true
