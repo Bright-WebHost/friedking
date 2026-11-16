@@ -67,7 +67,13 @@ export async function GET(request: NextRequest) {
     const phone = branch?.phone || (s.whatsapp_number ? `+91 ${s.whatsapp_number}` : '')
 
     const origin = request.nextUrl.origin
-    const [regular, semi, bold] = await Promise.all([font('Poppins-Regular.ttf', origin), font('Poppins-SemiBold.ttf', origin), font('Poppins-Bold.ttf', origin)])
+    const [regular, semi, bold, logoFile] = await Promise.all([
+      font('Poppins-Regular.ttf', origin),
+      font('Poppins-SemiBold.ttf', origin),
+      font('Poppins-Bold.ttf', origin),
+      readFile(path.join(process.cwd(), 'public', 'brand', 'logo-white.png')),
+    ])
+    const logo = `data:image/png;base64,${logoFile.toString('base64')}`
 
     const items = [...(order.items ?? [])].sort((a, b) => (a.line_no ?? 0) - (b.line_no ?? 0))
     const customer = Array.isArray(order.customer) ? order.customer[0] : order.customer
@@ -107,16 +113,16 @@ export async function GET(request: NextRequest) {
     const detailH = detail.reduce((h, [, v]) => h + 14 + 46 * wrapLines(v, 26), 0)
     const itemsH = items.reduce((h, it) => h + 92 + (it.notes ? 40 * wrapLines(it.notes, 44) : 0), 0)
     const addrLines = branch?.address ? wrapLines(branch.address, 48) : 0
-    const height = 560 + addrLines * 42 + 42 + 420 + detailH + itemsH + summary.length * 44 + 110 + 170 + (s.gstin ? 34 : 0)
+    const height = 420 + addrLines * 36 + 42 + 320 + detailH + itemsH + summary.length * 40 + 90 + 130 + (s.gstin ? 30 : 0)
 
     return new ImageResponse(
       (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff', fontFamily: 'Poppins' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '64px 48px 52px' }}>
-            <span style={{ fontSize: 78, fontWeight: 700, color: '#ffffff', letterSpacing: 12 }}>FRIED KING</span>
-            {branch?.address ? <span style={{ fontSize: 28, color: '#ffffff', marginTop: 26, textAlign: 'center', lineHeight: 1.5 }}>{branch.address}</span> : null}
-            {phone ? <span style={{ fontSize: 28, color: '#ffffff', marginTop: 6 }}>{phone}</span> : null}
-            {s.gstin ? <span style={{ fontSize: 24, color: '#ffe0dc', marginTop: 10 }}>GSTIN: {s.gstin}</span> : null}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '32px 48px 28px' }}>
+            <img src={logo} alt="Fried King" style={{ width: 240, height: 72, objectFit: 'contain' }} />
+            {branch?.address ? <span style={{ fontSize: 24, color: '#ffffff', marginTop: 14, textAlign: 'center', lineHeight: 1.4 }}>{branch.address}</span> : null}
+            {phone ? <span style={{ fontSize: 24, color: '#ffffff', marginTop: 4 }}>{phone}</span> : null}
+            {s.gstin ? <span style={{ fontSize: 21, color: '#ffe0dc', marginTop: 8 }}>GSTIN: {s.gstin}</span> : null}
           </div>
           {checker(false)}
 
