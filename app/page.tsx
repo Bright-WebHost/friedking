@@ -84,6 +84,22 @@ export default function CustomerPage() {
   // Set when the page was opened from the WhatsApp bot's link: name and number come from WhatsApp and are locked.
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [linked, setLinked] = useState<{ name: string; phoneMasked: string } | null>(null)
+  // Direct web orders prove their number by sending a code to our WhatsApp. enabled=false -> old manual number field.
+  const [verify, setVerify] = useState<{ enabled: boolean; secret: string; code: string; waUrl: string } | null>(null)
+  const [verified, setVerified] = useState<string | null>(null)
+  const [verifyBusy, setVerifyBusy] = useState(false)
+  const startVerify = useCallback(async () => {
+    setVerifyBusy(true)
+    try {
+      const d = await readJson(await fetch('/api/verify/start', { method: 'POST' }))
+      setVerified(null)
+      setVerify(d.enabled ? d : { enabled: false, secret: '', code: '', waUrl: '' })
+    } catch {
+      setVerify({ enabled: false, secret: '', code: '', waUrl: '' })
+    } finally {
+      setVerifyBusy(false)
+    }
+  }, [])
 
   // ── Load a branch menu ────────────────────────────────────────────────────
   const loadMenu = useCallback(async (slug: string) => {
@@ -240,9 +256,11 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (!branch || submitting) return
-    const e164 = linked ? '' : normalizePhone(phone)
+    const needVerify = !linked && !!verify?.enabled
+    const e164 = linked || needVerify ? '' : normalizePhone(phone)
     if (!name.trim()) return setFormError('Please enter your name.')
-    if (!linked && !e164) return setFormError('Please enter a valid 10-digit mobile number.')
+    if (needVerify && !verified) return setFormError('Please verify your WhatsApp number first.')
+    if (!linked && !needVerify && !e164) return setFormError('Please enter a valid 10-digit mobile number.')
     if (orderType === 'delivery' && !address.trim()) return setFormError('Please enter your delivery address.')
 
     setFormError(null)
@@ -253,6 +271,7 @@ export default function CustomerPage() {
         customerName: name.trim(),
         customerPhone: e164 ?? '',
         linkToken: linked ? linkToken : null,
+        verifySecret: needVerify ? verify!.secret : null,
         orderType,
         deliveryAddress: orderType === 'delivery' ? address.trim() : null,
         paymentMethod: payment,
@@ -268,6 +287,8 @@ export default function CustomerPage() {
       const data = await readJson(res)
       if (!res.ok) throw new Error(data.message ?? 'Could not place your order.')
       setPlaced(data)
+      setVerify(null)
+      setVerified(null)
       setCart([])
       setNotes('')
       setScreen('confirmed')
@@ -278,6 +299,20 @@ export default function CustomerPage() {
       setSubmitting(false)
     }
   }
+
+  useEffect(() => {
+    if (screen === 'checkout' && !linked && !verify && !verifyBusy) void startVerify()
+  }, [screen, linked, verify, verifyBusy, startVerify])
+  useEffect(() => {
+    if (screen !== 'checkout' || !verify?.enabled || verified) return
+    const t = setInterval(async () => {
+      try {
+        const d = await readJson(await fetch(`/api/verify/status?s=${verify.secret}`))
+        if (d.verified) setVerified(d.phoneMasked)
+      } catch { /* try again */ }
+    }, 3000)
+    return () => clearInterval(t)
+  }, [screen, verify, verified])
 
   if (!ready) return null
 
@@ -424,7 +459,25 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              {!linked && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
+              {!linked && verify?.enabled && (verified ? (
+                <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                  <Check className="h-5 w-5 shrink-0 text-green-700" strokeWidth={3} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-green-900">WhatsApp number verified</p>
+                    <p className="truncate text-sm text-green-800">{verified}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-fk-line bg-white px-4 py-3">
+                  <p className="text-sm font-bold">Verify your WhatsApp number</p>
+                  <p className="mt-1 text-sm text-fk-muted">Tap the button and send the message that opens in WhatsApp. This page continues by itself.</p>
+                  <a href={verify.waUrl} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#25d366] px-4 py-3 text-sm font-bold text-white">
+                    Verify on WhatsApp
+                  </a>
+                  <p className="mt-2 text-center text-xs text-fk-muted">Or send <b>VERIFY {verify.code}</b> to our WhatsApp number. Waiting for your message…</p>
+                </div>
+              ))}
+              {!linked && !verify?.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
                   className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm"

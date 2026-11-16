@@ -48,6 +48,8 @@ export interface PlaceOrderPayload {
   customerPhone: string
   /** Token from the WhatsApp menu link (?t=). Proves the order comes from that WhatsApp number. */
   linkToken?: string | null
+  /** Secret from /api/verify/start once the customer has sent the VERIFY message on WhatsApp. */
+  verifySecret?: string | null
   orderType: OrderType
   deliveryAddress: string | null
   paymentMethod: PaymentMethod

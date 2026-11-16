@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { verificationEnabled } from '@/lib/verify'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calcTotals, normalizePhone } from '@/lib/utils'
 import type { PlaceOrderPayload, PlacedOrder } from '@/lib/types'
@@ -31,7 +32,8 @@ export async function POST(req: NextRequest) {
   // A valid WhatsApp link token decides who is ordering; the browser cannot override the number.
   const linkToken = String(body.linkToken ?? '').trim()
   const link = /^[0-9a-f]{32}$/.test(linkToken) ? await findLink(linkToken) : null
-  const phone = link ? link.phone : normalizePhone(String(body.customerPhone ?? ''))
+  let phone = link ? link.phone : normalizePhone(String(body.customerPhone ?? ''))
+  const verifySecret = /^[0-9a-f]{48}$/.test(String(body.verifySecret ?? '')) ? String(body.verifySecret) : ''
   const name = String((link?.name || body.customerName) ?? '').trim().slice(0, 80)
   const orderType = body.orderType
   const paymentMethod = body.paymentMethod
@@ -42,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   if (!slug) return bad('Branch is required')
   if (!name) return bad('Please enter your name')
-  if (!phone) return bad('Please enter a valid 10-digit mobile number')
+  if (!phone && !verifySecret) return bad('Please enter a valid 10-digit mobile number')
   if (orderType !== 'pickup' && orderType !== 'delivery') return bad('Invalid order type')
   if (paymentMethod !== 'cash') return bad('Invalid payment method')
   if (orderType === 'delivery' && !address) return bad('Please enter your delivery address')
@@ -75,6 +77,21 @@ export async function POST(req: NextRequest) {
     if (dup) {
       const placed: PlacedOrder = { orderId: dup.id, orderNumber: dup.order_number, totalPaise: dup.total_paise }
       return NextResponse.json(placed, { status: 200 })
+    }
+
+    // Direct web orders must prove the phone by WhatsApp message (skipped for link-token orders and while the SQL is not installed).
+    let verificationId: string | null = null
+    if (!link) {
+      if (await verificationEnabled(supabase)) {
+        const { data: v } = verifySecret
+          ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at').eq('secret', verifySecret).maybeSingle()
+          : { data: null }
+        if (!v || !v.verified_at || v.consumed_at || !v.phone) return bad('Please verify your WhatsApp number first.', 403)
+        phone = v.phone as string
+        verificationId = v.id as string
+      } else if (!phone) {
+        return bad('Please enter a valid 10-digit mobile number')
+      }
     }
 
     const { data: branch } = await supabase
@@ -170,6 +187,8 @@ export async function POST(req: NextRequest) {
       },
     })
     if (eventErr) console.error('[POST /api/order] order_events (order still placed):', eventErr.message)
+
+    if (verificationId) await supabase.from('wa_verifications').update({ consumed_at: new Date().toISOString() }).eq('id', verificationId)
 
     const placed: PlacedOrder = { orderId: order.id, orderNumber: order.order_number, totalPaise: totals.totalPaise }
     return NextResponse.json(placed, { status: 201 })
