@@ -30,10 +30,11 @@ const STATUS: Record<string, { label: string; cls: string; icon: React.ReactNode
 }
 
 /** The diner's table tab: every round sent to the kitchen, its progress, the running total, and a button to add another round. */
-export default function TableTab({ table, info, branchName, onAddMore, onNewTab }: {
+export default function TableTab({ table, info, branchName, whatsapp, onAddMore, onNewTab }: {
   table: number
   info: TableInfo | null
   branchName: string
+  whatsapp?: string
   onAddMore: () => void
   onNewTab: () => void
 }) {
@@ -86,6 +87,10 @@ export default function TableTab({ table, info, branchName, onAddMore, onNewTab 
               </div>
               <p className="text-center text-xs text-fk-muted">Incl. 5% GST. Pay at the counter when you are done. Your bill comes to your WhatsApp after the staff close the table.</p>
             </>
+          )}
+
+          {info?.open && whatsapp && (
+            <a href={`https://wa.me/${whatsapp}`} className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#25d366] py-3.5 font-bold text-white">Back to WhatsApp</a>
           )}
 
           {info?.open && (

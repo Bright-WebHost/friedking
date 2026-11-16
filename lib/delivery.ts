@@ -12,6 +12,16 @@ export interface DeliveryRules {
   freeAbovePaise: number
   /** Active delivery pincodes. Empty = the branch has not restricted delivery. */
   pincodes: Array<{ pincode: string; area: string | null }>
+  /** Branch WhatsApp number, digits only with country code (for the "Back to WhatsApp" button). */
+  whatsapp: string
+}
+
+/** Fried King's WhatsApp number (used until Settings has one). */
+const DEFAULT_WA = '919742175222'
+function waDigits(v: string | undefined) {
+  const d = String(v ?? '').replace(/\D/g, '')
+  if (d.length === 10) return '91' + d
+  return d.length >= 11 ? d : DEFAULT_WA
 }
 
 const rupeesToPaise = (v: string | undefined) => Math.max(0, Math.round((Number(v) || 0) * 100))
@@ -29,7 +39,7 @@ export async function loadDeliveryRules(db: SupabaseClient, branchId: string): P
   const [feeReady, { data: rows }, { data: pins }] = await Promise.all([
     feeColumnExists(db),
     db.from('branch_settings').select('key, value').eq('branch_id', branchId)
-      .in('key', ['order_types', 'min_order', 'delivery_fee', 'free_delivery_enabled', 'free_delivery_above']),
+      .in('key', ['order_types', 'min_order', 'delivery_fee', 'free_delivery_enabled', 'free_delivery_above', 'whatsapp_number']),
     db.from('delivery_pincodes').select('pincode, area').eq('branch_id', branchId).eq('is_active', true).order('pincode'),
   ])
   const s = Object.fromEntries((rows ?? []).map((r) => [r.key as string, (r.value as string | null) ?? '']))
@@ -44,6 +54,7 @@ export async function loadDeliveryRules(db: SupabaseClient, branchId: string): P
     feePaise,
     minOrderPaise: rupeesToPaise(s.min_order),
     freeAbovePaise: freeOn && feePaise > 0 ? rupeesToPaise(s.free_delivery_above) : 0,
+    whatsapp: waDigits(s.whatsapp_number),
     pincodes: (pins ?? []).map((p) => ({ pincode: p.pincode as string, area: (p.area as string | null) ?? null })),
   }
 }

@@ -450,6 +450,7 @@ export default function CustomerPage() {
         table={tableNo}
         info={tableInfo}
         branchName={shortName(branch?.name)}
+        whatsapp={rules?.whatsapp}
         onAddMore={() => setScreen('menu')}
         onNewTab={() => {
           window.history.replaceState(null, '', window.location.pathname)
@@ -486,9 +487,16 @@ export default function CustomerPage() {
               <span>{orderType === 'pickup' ? 'Takeaway' : 'Delivery'}</span>
             </p>
             <p className="mt-4 text-sm text-fk-muted">The branch will confirm your order shortly.</p>
+            <a
+              href={`https://wa.me/${rules?.whatsapp ?? '919742175222'}?text=${encodeURIComponent(`Hi, I placed order #${placed.orderNumber}`)}`}
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-[14px] bg-[#25d366] py-4 font-bold text-white transition hover:brightness-95"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden><path d="M12.04 2a9.9 9.9 0 0 0-8.47 15.04L2 22l5.1-1.34A9.9 9.9 0 1 0 12.04 2Zm5.8 14.1c-.25.7-1.43 1.34-1.98 1.4-.5.06-1.12.09-1.8-.12a16 16 0 0 1-1.63-.6c-2.87-1.24-4.74-4.13-4.88-4.32-.14-.19-1.17-1.56-1.17-2.97s.74-2.1 1-2.39c.27-.29.58-.36.77-.36h.55c.18 0 .42-.07.65.5.25.58.83 2 .9 2.15.07.14.12.31.02.5-.09.19-.14.31-.28.48-.14.17-.3.38-.43.5-.14.14-.29.3-.12.58.16.29.72 1.2 1.56 1.94 1.07.95 1.98 1.25 2.26 1.39.29.14.45.12.62-.07.17-.19.72-.84.91-1.13.19-.29.38-.24.65-.14.26.1 1.67.79 1.96.93.29.14.48.22.55.34.07.12.07.7-.18 1.4Z" /></svg>
+              Back to WhatsApp
+            </a>
             <button
               onClick={() => { setPlaced(null); setScreen('menu') }}
-              className="mt-6 w-full rounded-[14px] bg-fk-red py-4 font-bold text-white transition hover:bg-fk-red-dark"
+              className="mt-3 w-full rounded-[14px] border border-fk-line py-3.5 font-bold text-fk-ink transition hover:bg-fk-bg"
             >
               Back to menu
             </button>
