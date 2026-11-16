@@ -1226,7 +1226,7 @@ function QtyControl({ qty, name, onChange }: { qty: number; name: string; onChan
   if (qty === 0) {
     return (
       <button
-        onClick={() => onChange(1)}
+        onClick={(event) => { event.stopPropagation(); onChange(1) }}
         aria-label={`Add ${name}`}
         className="flex h-[34px] min-w-[76px] items-center justify-center rounded-lg border-[1.5px] border-fk-red bg-white px-4 text-[13px] font-black tracking-wide text-fk-red shadow-sm transition-all hover:bg-fk-tint active:scale-95"
       >
@@ -1235,7 +1235,7 @@ function QtyControl({ qty, name, onChange }: { qty: number; name: string; onChan
     )
   }
   return (
-    <div className="flex h-[34px] min-w-[76px] items-center justify-between rounded-lg bg-fk-red px-1.5 text-[13px] font-extrabold text-white shadow-sm">
+    <div onClick={(event) => event.stopPropagation()} className="flex h-[34px] min-w-[76px] items-center justify-between rounded-lg bg-fk-red px-1.5 text-[13px] font-extrabold text-white shadow-sm">
       <button onClick={() => onChange(-1)} aria-label={`Remove one ${name}`} className="flex h-full items-center p-1 transition active:scale-90">
         <Minus className="h-3.5 w-3.5" strokeWidth={3} />
       </button>

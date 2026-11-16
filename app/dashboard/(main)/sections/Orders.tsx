@@ -66,9 +66,9 @@ export default function Orders() {
     )
   }
 
-  // Dine-in rounds live in the table popups; the board only shows the ones still waiting to be accepted.
+  // New dine-in rounds have a dedicated table column; accepted rounds follow the normal kitchen flow.
   const dineActive = valid.filter((o) => o.order_type === 'dine-in' && ACTIVE_DINE.includes(o.status) && o.status === 'pending')
-  const prep = valid.filter((o) => o.order_type !== 'dine-in' && ['preparing', 'confirmed'].includes(o.status))
+  const prep = valid.filter((o) => ['preparing', 'confirmed'].includes(o.status))
   const ready = valid.filter((o) => o.order_type !== 'dine-in' && o.status === 'ready')
   const done = valid.filter((o) => o.status === 'delivered')
 
