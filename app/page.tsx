@@ -299,6 +299,10 @@ export default function CustomerPage() {
       return item ? [item] : []
     })
   }, [items])
+  const drinkAddOns = useMemo(() => {
+    const drinkCategoryIds = new Set(categories.filter((category) => category.name.trim().toLowerCase() === 'mojitos').map((category) => category.id))
+    return items.filter((item) => drinkCategoryIds.has(item.categoryId))
+  }, [items, categories])
 
   const jumpTo = (categoryId: string) => {
     setCategoryMenuOpen(false)
@@ -628,6 +632,32 @@ export default function CustomerPage() {
               )}
             </div>
           </Card>
+
+          {drinkAddOns.length > 0 && (
+            <Card title="Add a drink">
+              <p className="mb-3 text-xs font-medium text-fk-muted">Complete your meal with a refreshing Mojito.</p>
+              <div className="space-y-2.5">
+                {drinkAddOns.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 rounded-xl border border-fk-line bg-white p-2.5">
+                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-fk-tint">
+                      {item.imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src="/brand/mark-red.png" alt="" className="h-full w-full object-contain p-3 opacity-70" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold">{item.name}</p>
+                      <p className="mt-0.5 text-xs font-semibold text-fk-muted">{formatPrice(item.pricePaise)}</p>
+                    </div>
+                    <QtyControl qty={qtyOf(item.id)} name={item.name} onChange={(delta) => changeQty(item, delta)} />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           <Card title="Notes for the kitchen (optional)">
             <textarea className={`${input} resize-none`} rows={2} maxLength={400} placeholder="Extra spicy, no mayo..." value={notes} onChange={(e) => setNotes(e.target.value)} />
