@@ -450,7 +450,7 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              <VerifyCard key={verifyKey} onChange={(v) => { setVs(v); setVsLoaded(true) }} />
+              <VerifyCard key={verifyKey} linkToken={linked ? linkToken : null} useSession={account.loggedIn} fixedMasked={linked ? linked.phoneMasked : account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />
               {!linked && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
