@@ -195,7 +195,7 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
             <h1>{active ? `${active.icon} ${active.label}` : 'Dashboard'}</h1>
             <div className="pills">
               <span className="pilb ok">● Live</span>
-              <span className="pilb upd" title="Last time data was fetched">⟳ Updated {istTime(updatedAt ?? new Date())}</span>
+              <span className="pilb upd" title="Last time data was fetched">⟳ Updated {updatedAt ? istTime(updatedAt) : '…'}</span>
               {meta && <span className="pilb">{meta.branch.name}</span>}
               {!soundOn && <button className="pilb warn" onClick={() => { enableSound(); chime() }}>🔕 Tap to enable sound</button>}
             </div>

@@ -627,7 +627,8 @@
   & aside nav a:hover { background: rgba(255,255,255,.16); color: #fff; }
   & aside nav a[aria-current="page"] { background: #fff; color: var(--red2); font-weight: 800; box-shadow: 0 4px 14px rgba(0,0,0,.18); }
   & aside nav a[aria-current="page"]::before { background: var(--yellow); left: -14px; }
-  & .side-foot { border-top-color: rgba(255,255,255,.28); }
+  & .side-foot { border-top-color: rgba(255,255,255,.28); gap: 6px; padding-top: 10px; }
+  & .side-foot button, & .side-foot select { padding: 8px 11px; }
   & .side-foot button, & .side-foot select { background: rgba(0,0,0,.2); color: #fff; }
   & .side-foot button:hover:not(:disabled) { background: rgba(0,0,0,.34); }
   & .side-foot select option { color: var(--ink); background: #fff; }
@@ -670,6 +671,7 @@
     & .head { margin: -16px -14px 14px; padding: 10px 14px; }
   }
   @media (max-width: 860px) {
+    & .shell { grid-template-columns: minmax(0, 1fr); }
     & aside { box-shadow: none; }
     & aside.open { box-shadow: 18px 0 48px rgba(0,0,0,.4); }
     & .head { gap: 8px; }
