@@ -58,10 +58,11 @@ export function useOrderActions(reload: () => unknown) {
   }, [toast, after])
 
   const setStatus = useCallback((o: DOrder, to: OrderStatus, extraBody: Record<string, unknown> = {}) => {
-    if (isBackward(o.status, to)) {
-      if (!isBoss(staff.role)) { toast('Only a manager can do that'); return Promise.resolve(false) }
-      setModal(<PasscodeModal title="Undo needs the passcode" onClose={close}
-        detail={`Moving #${o.order_number} from ${statusLabel(o)} back to ${statusLabel({ ...o, status: to })}. Enter the passcode.`}
+    const cancelling = to === 'cancelled' && o.status !== 'cancelled'
+    if (isBackward(o.status, to) || cancelling) {
+      if (!cancelling && !isBoss(staff.role)) { toast('Only a manager can do that'); return Promise.resolve(false) }
+      setModal(<PasscodeModal title={cancelling ? 'Cancel needs the passcode' : 'Undo needs the passcode'} onClose={close}
+        detail={cancelling ? `Cancelling #${o.order_number} (${statusLabel(o)}). Enter the passcode.` : `Moving #${o.order_number} from ${statusLabel(o)} back to ${statusLabel({ ...o, status: to })}. Enter the passcode.`}
         onOk={async (code) => {
           try { await api.post('orders', 'status', { orderId: o.id, status: to, passcode: code, ...extraBody }); toast(`#${o.order_number} → ${statusLabel({ ...o, status: to })}`); after(); return true }
           catch (e) { toast(e instanceof Error ? e.message : 'Could not undo'); return false }

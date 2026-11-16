@@ -1,6 +1,7 @@
 import { getSettings, HttpError, str, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 import { loadOrders } from './orders'
+import { execute, prepare, type Resolved } from './aiActions'
 
 const rs = (paise: number) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`
 const istDay = (t: string | number) => new Date(new Date(t).getTime() + 19800000).toISOString().slice(0, 10)
@@ -92,7 +93,22 @@ export const aiHandler: Handler = {
         'You are the assistant for the staff of Fried King, a fried chicken restaurant in Mangaluru. You are talking to ' + ctx.staff.name + '.\n' +
         'Answer ONLY from the DATA below. Be brief: two to five short lines, exact numbers, rupees with the ₹ sign. ' +
         'If the answer is not in the data, say you do not have that information. Never invent numbers. ' +
-        'You can only read; you cannot change orders, stock or prices, so tell staff to use the dashboard page for that. ' +
+        'You can also DO things for staff, but only by proposing an action that staff must confirm. ' +
+        'When (and only when) the staff member asks you to change something, answer with one short sentence of what you are about to do, then on a NEW last line write ACTION: followed by ONE JSON object, in English, with no text after it. ' +
+        'Allowed actions (use the names exactly as the staff member said them; numbers are plain numbers):\n' +
+        '{"type":"stock_add","item":"<ingredient or dish>","qty":10}  add stock received\n' +
+        '{"type":"stock_remove","item":"...","qty":2,"reason":"wasted"}  take stock out\n' +
+        '{"type":"stock_set","item":"...","qty":25}  set the stock count\n' +
+        '{"type":"dish_available","item":"<dish>","available":false}  sold out / back on the menu\n' +
+        '{"type":"dish_price","item":"<dish>","price":199}\n' +
+        '{"type":"order_accept","order":1023,"minutes":20}\n' +
+        '{"type":"order_status","order":1023,"status":"ready|delivered|cancelled|preparing","reason":""}\n' +
+        '{"type":"rider_assign","order":1023,"rider":"<rider name>"}\n' +
+        '{"type":"setting","key":"free_delivery_enabled|free_delivery_above|delivery_fee|min_order","value":"true or an amount in rupees"}\n' +
+        '{"type":"expense","category":"Gas","amount":1200,"note":""}\n' +
+        'You may write several ACTION lines (one per line) when one request needs several changes, for example turning on free delivery AND setting its amount. ' +
+        'If the request is missing something you need (which item, how much), ask one short question and write NO ACTION line. ' +
+        'If it is not on that list, say staff should use that dashboard page. Never claim a change is done: the staff member confirms it after your message. ' +
         'Reply in the language the staff member writes in.\n\nDATA:\n' + await snapshot(ctx)
 
       let res: Response
@@ -103,7 +119,28 @@ export const aiHandler: Handler = {
       }
       const out = await res.json().catch(() => ({}))
       if (!res.ok || !out.reply) throw new HttpError(502, 'The assistant could not answer right now. Please try again.')
-      return { reply: String(out.reply) }
+      // The model may end its reply with one or more "ACTION: {json}" lines. Resolve each against the database; staff confirm them in the UI.
+      let reply = String(out.reply)
+      const proposals: Resolved[] = []
+      const found = [...reply.matchAll(/^[ 	]*ACTION:\s*(\{.*\})\s*$/gm)]
+      if (found.length) {
+        reply = reply.slice(0, found[0].index).trim()
+        try {
+          for (const f of found.slice(0, 5)) proposals.push(await prepare(ctx, JSON.parse(f[1])))
+        } catch (e) {
+          proposals.length = 0
+          reply = e instanceof HttpError ? e.message : 'I could not work that out. Please say it again.'
+        }
+      }
+      return { reply: reply || 'OK.', proposals }
+    },
+    /** Staff tapped Confirm on a proposed action. */
+    async execute(ctx, b) {
+      const list = (Array.isArray(b.actions) ? b.actions : []).slice(0, 5)
+      if (!list.length) throw new HttpError(400, 'Nothing to confirm')
+      const done: string[] = []
+      for (const a of list) done.push(await execute(ctx, a as Record<string, unknown>, b.passcode))
+      return { ok: true, summary: done.join('; ') }
     },
   },
 }

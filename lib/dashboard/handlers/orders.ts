@@ -47,6 +47,12 @@ export function isBackward(from: Status, to: Status) {
   return a >= 0 && b >= 0 && b < a
 }
 
+/** Cancelling needs the passcode too (any role that can open the order; undoing a cancel also needs a manager). */
+async function checkCancelCode(ctx: Ctx, passcode: unknown) {
+  const settings = await getSettings(ctx)
+  if (String(passcode ?? '') !== settings.undo_passcode) throw new HttpError(403, 'Wrong passcode')
+}
+
 async function checkPasscode(ctx: Ctx, passcode: unknown) {
   if (!isBoss(ctx.staff.role)) throw new HttpError(403, 'Only a manager can undo')
   const settings = await getSettings(ctx)
@@ -60,6 +66,7 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
   const from = order.status
   if (from === to && !opts.extra) return order
   if (isBackward(from, to)) await checkPasscode(ctx, opts.passcode)
+  else if (to === 'cancelled' && from !== 'cancelled' && opts.action !== 'decline') await checkCancelCode(ctx, opts.passcode)
 
   const now = new Date().toISOString()
   const updates: Record<string, unknown> = { status: to, ...(opts.extra ?? {}) }

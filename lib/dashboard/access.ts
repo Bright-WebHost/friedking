@@ -7,8 +7,7 @@ export type SectionKey =
 
 export const SECTIONS: Array<{ key: SectionKey; label: string; icon: string; roles: StaffRole[] }> = [
   { key: 'pos', label: 'POS', icon: '🛒', roles: ['owner', 'manager', 'staff'] },
-  { key: 'orders', label: 'Orders', icon: '🧾', roles: ['owner', 'manager', 'staff'] },
-  { key: 'tables', label: 'Tables', icon: '🍽️', roles: ['owner', 'manager', 'staff'] },
+  { key: 'orders', label: 'Floor & Orders', icon: '🧾', roles: ['owner', 'manager', 'staff'] },
   { key: 'chat', label: 'Live Chat', icon: '💬', roles: ['owner', 'manager'] },
   { key: 'menu', label: 'Menu', icon: '📋', roles: ['owner', 'manager'] },
   { key: 'stock', label: 'Stock', icon: '📦', roles: ['owner', 'manager'] },

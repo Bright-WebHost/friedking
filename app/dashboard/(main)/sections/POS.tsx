@@ -98,7 +98,7 @@ export default function POS() {
       }
       clear(); setPhone(''); setName(''); setAddress(''); setPincode(''); setTable('')
       window.dispatchEvent(new Event('fk-orders-changed'))
-      go(type === 'dine-in' ? 'tables' : 'orders')
+      go('orders')
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Could not create the order')
     } finally {

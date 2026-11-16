@@ -7,6 +7,7 @@ import {
   customerName, ist, Loading, phoneShort, RangeChips, rangeBounds, rs, Slide, statusLabel, useDash, useIsMobile, useLoad, usePoll, useTick, type Range,
 } from '../kit'
 import { Age, canEdit, LineItems, TypeTag, useOrderActions } from './orderParts'
+import { TableRail, useFloor } from './Tables'
 
 const ACTIVE_DINE = ['pending', 'confirmed', 'preparing', 'ready']
 
@@ -25,7 +26,9 @@ export default function Orders() {
     return r.orders
   }, [range, api])
   usePoll(reload)
-  const act = useOrderActions(reload)
+  const floor = useFloor()
+  const reloadAll = () => { void reload(); void floor.reload() }
+  const act = useOrderActions(reloadAll)
 
   const orders = useMemo(() => data ?? [], [data])
   const live = orders
@@ -37,9 +40,34 @@ export default function Orders() {
   if (loading && !data) return <Loading />
   if (error && !data) return <Loading error={error} onRetry={reload} />
 
-  if (mobile) return <MobileOrders orders={orders} act={act} revenue={revenue} range={range} setRange={setRange} />
+  const fd = floor.data
+  const openTabs = fd ? fd.sessions.reduce((sum, x) => sum + floor.totalOf(x), 0) : 0
+  const stats = (
+    <div className="ministats floorstats">
+      <div className="mstat c-blue"><span>Tables</span><b>{fd ? `${fd.sessions.length}/${fd.tables.length}` : '–'}</b></div>
+      <div className="mstat c-purple"><span>Food ready</span><b>{fd ? fd.tables.filter((t) => floor.stateOf(floor.sessionOf(t)) === 'ready').length : 0}</b></div>
+      <div className="mstat c-green"><span>Open tabs</span><b>{rs(openTabs)}</b></div>
+      <div className="mstat c-red"><span>Revenue</span><b>{rs(revenue)}</b></div>
+      <div className="mstat c-blue"><span>Orders</span><b>{valid.length}</b></div>
+      <div className="mstat c-amber"><span>Awaiting</span><b>{valid.filter((o) => o.status === 'pending').length}</b></div>
+      <div className="mstat c-purple"><span>Kitchen</span><b>{valid.filter((o) => ['preparing', 'confirmed'].includes(o.status)).length}</b></div>
+      <div className="mstat c-amber"><span>Cash due</span><b>{rs(cashDue)}</b></div>
+    </div>
+  )
 
-  const dineActive = valid.filter((o) => o.order_type === 'dine-in' && ACTIVE_DINE.includes(o.status))
+  if (mobile) {
+    return (
+      <>
+        {stats}
+        <TableRail floor={floor} mobile />
+        <MobileOrders orders={orders} act={act} revenue={revenue} range={range} setRange={setRange} />
+        {floor.popup(act)}{floor.modal}
+      </>
+    )
+  }
+
+  // Dine-in rounds live in the table popups; the board only shows the ones still waiting to be accepted.
+  const dineActive = valid.filter((o) => o.order_type === 'dine-in' && ACTIVE_DINE.includes(o.status) && o.status === 'pending')
   const prep = valid.filter((o) => o.order_type !== 'dine-in' && ['preparing', 'confirmed'].includes(o.status))
   const ready = valid.filter((o) => o.order_type !== 'dine-in' && o.status === 'ready')
   const done = valid.filter((o) => o.status === 'delivered')
@@ -102,19 +130,16 @@ export default function Orders() {
 
   return (
     <section>
+      {stats}
+      <div className="floorwrap">
+        <TableRail floor={floor} />
+        <div className="floorboard">
       <RangeChips range={range} setRange={setRange} />
-      <div className="stats">
-        <div className="stat r"><span>Revenue</span><b>{rs(revenue)}</b></div>
-        <div className="stat b"><span>Total Orders</span><b>{valid.length}</b></div>
-        <div className="stat o"><span>Awaiting Accept</span><b>{valid.filter((o) => o.status === 'pending').length}</b></div>
-        <div className="stat p"><span>In The Kitchen</span><b>{valid.filter((o) => ['preparing', 'confirmed'].includes(o.status)).length}</b></div>
-        <div className="stat"><span>Cash To Collect</span><b>{rs(cashDue)}</b></div>
-      </div>
       <div className="board">
-        <div className="col dinein">
-          <div className="colbar"><span>🍽️ Dine-in</span><span className="cnt">{dineActive.length}</span></div>
-          {dineActive.length ? dineActive.map((o) => card(o, 'dine')) : <div className="none">No active rounds</div>}
-        </div>
+        {dineActive.length > 0 && <div className="col dinein">
+          <div className="colbar"><span>🍽️ Table orders · new</span><span className="cnt">{dineActive.length}</span></div>
+          {dineActive.map((o) => card(o, 'dine'))}
+        </div>}
         <div className="col preparing">
           <div className="colbar"><span>Preparing</span><span className="cnt">{prep.length}</span></div>
           {prep.length ? prep.map((o) => card(o, 'prep')) : <div className="none">Nothing here</div>}
@@ -132,7 +157,9 @@ export default function Orders() {
         <button onClick={() => setDrawer((d) => !d)}>Declined &amp; cancelled <span>{cancelled.length} ▾</span></button>
         {drawer && <div className="body">{cancelled.length ? cancelled.map((o) => card(o, 'drawer')) : <div className="none">None</div>}</div>}
       </div>
-      {act.modal}
+        </div>
+      </div>
+      {floor.popup(act)}{floor.modal}{act.modal}
     </section>
   )
 }
