@@ -181,6 +181,11 @@ export default function CustomerPage() {
     if (p) setPhone(p.slice(3))
     const token = params.get('t')?.trim() ?? ''
     if (/^[0-9a-f]{32}$/.test(token)) {
+      params.delete('t')
+      params.delete('ph')
+      params.delete('phone')
+      const cleanQuery = params.toString()
+      window.history.replaceState(window.history.state, '', `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash}`)
       fetch(`/api/link?t=${token}`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
