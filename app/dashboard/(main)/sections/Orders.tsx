@@ -189,7 +189,7 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
             <div className="morow"><b>#{o.order_number}</b><span>{ist(o.created_at)} · <Age o={o} /></span></div>
             <div className="osub">{o.order_type === 'dine-in' ? `Table ${o.table_number ?? '?'}` : customerName(o)}{o.customer?.phone ? ` · ${phoneShort(o.customer.phone)}` : ''}</div>
             {o.delivery_address && <div className="osub">📍 {o.delivery_address}</div>}
-            <div className="oitems">{o.items.map((l) => `${l.quantity} × ${l.name_snapshot}`).join(', ')}</div>
+            <div className="oitems">{o.items.map((l) => `${l.quantity} × ${l.name_snapshot}${l.notes ? ` (${l.notes})` : ''}`).join(', ')}</div>
             <div className="moamt">{rs(o.total_paise)} · <span style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'capitalize' }}>{statusLabel(o)}</span></div>
             <div className="moacts">
               {o.status === 'pending' && <>

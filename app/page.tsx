@@ -81,6 +81,9 @@ export default function CustomerPage() {
   const [submitting, setSubmitting] = useState(false)
   const [placed, setPlaced] = useState<PlacedOrder | null>(null)
   const idempotencyKey = useRef<string>('')
+  // Set when the page was opened from the WhatsApp bot's link: name and number come from WhatsApp and are locked.
+  const [linkToken, setLinkToken] = useState<string | null>(null)
+  const [linked, setLinked] = useState<{ name: string; phoneMasked: string } | null>(null)
 
   // ── Load a branch menu ────────────────────────────────────────────────────
   const loadMenu = useCallback(async (slug: string) => {
@@ -140,6 +143,18 @@ export default function CustomerPage() {
     // The n8n WhatsApp buttons send the number as ?ph=; older links use ?phone=.
     const p = normalizePhone(params.get('phone') ?? params.get('ph') ?? '')
     if (p) setPhone(p.slice(3))
+    const token = params.get('t')?.trim() ?? ''
+    if (/^[0-9a-f]{32}$/.test(token)) {
+      fetch(`/api/link?t=${token}`, { cache: 'no-store' })
+        .then((r) => r.json())
+        .then((d) => {
+          if (!d.linked) return
+          setLinkToken(token)
+          setLinked({ name: d.name ?? '', phoneMasked: d.phoneMasked })
+          if (d.name) setName(d.name)
+        })
+        .catch(() => undefined)
+    }
     const slug = ONLY_BRANCH ?? params.get('branch')?.trim().toLowerCase()
     if (slug) loadMenu(slug)
     else loadBranches()
@@ -228,9 +243,9 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (!branch || submitting) return
-    const e164 = normalizePhone(phone)
+    const e164 = linked ? '' : normalizePhone(phone)
     if (!name.trim()) return setFormError('Please enter your name.')
-    if (!e164) return setFormError('Please enter a valid 10-digit mobile number.')
+    if (!linked && !e164) return setFormError('Please enter a valid 10-digit mobile number.')
     if (orderType === 'delivery' && !address.trim()) return setFormError('Please enter your delivery address.')
 
     setFormError(null)
@@ -239,18 +254,14 @@ export default function CustomerPage() {
       const payload: PlaceOrderPayload = {
         branchSlug: branch.slug,
         customerName: name.trim(),
-        customerPhone: e164,
+        customerPhone: e164 ?? '',
+        linkToken: linked ? linkToken : null,
         orderType,
         deliveryAddress: orderType === 'delivery' ? address.trim() : null,
         paymentMethod: payment,
-        specialInstructions: [
-          notes.trim(),
-          ...cart
-            .filter((line) => line.specialNote?.trim())
-            .map((line) => `${line.item.name}: ${line.specialNote?.trim()}`),
-        ].filter(Boolean).join('\n').slice(0, 400) || null,
+        specialInstructions: notes.trim() || null,
         idempotencyKey: idempotencyKey.current,
-        items: cart.map((c) => ({ itemId: c.item.id, quantity: c.quantity })),
+        items: cart.map((c) => ({ itemId: c.item.id, quantity: c.quantity, note: c.specialNote?.trim() || undefined })),
       }
       const res = await fetch('/api/order', {
         method: 'POST',
@@ -401,8 +412,22 @@ export default function CustomerPage() {
 
           <Card title="Your details">
             <div className="space-y-3">
-              <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
-              <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
+              {linked ? (
+                <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white">
+                    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="currentColor" aria-hidden><path d="M12.04 2a9.9 9.9 0 0 0-8.47 15.04L2 22l5.1-1.34A9.9 9.9 0 1 0 12.04 2Zm5.8 14.1c-.25.7-1.43 1.34-1.98 1.4-.5.06-1.12.09-1.8-.12a16 16 0 0 1-1.63-.6c-2.87-1.24-4.74-4.13-4.88-4.32-.14-.19-1.17-1.56-1.17-2.97s.74-2.1 1-2.39c.27-.29.58-.36.77-.36h.55c.18 0 .42-.07.65.5.25.58.83 2 .9 2.15.07.14.12.31.02.5-.09.19-.14.31-.28.48-.14.17-.3.38-.43.5-.14.14-.29.3-.12.58.16.29.72 1.2 1.56 1.94 1.07.95 1.98 1.25 2.26 1.39.29.14.45.12.62-.07.17-.19.72-.84.91-1.13.19-.29.38-.24.65-.14.26.1 1.67.79 1.96.93.29.14.48.22.55.34.07.12.07.7-.18 1.4Z" /></svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-green-900">Linked to your WhatsApp</p>
+                    <p className="truncate text-sm text-green-800">{linked.name ? `${linked.name} · ` : ''}{linked.phoneMasked}</p>
+                  </div>
+                  <Check className="h-5 w-5 shrink-0 text-green-700" strokeWidth={3} />
+                </div>
+              ) : null}
+              {(!linked || !linked.name) && (
+                <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
+              )}
+              {!linked && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
                   className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm"
@@ -413,7 +438,7 @@ export default function CustomerPage() {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 />
-              </div>
+              </div>}
               {orderType === 'delivery' && (
                 <textarea
                   className={`${input} resize-none`}

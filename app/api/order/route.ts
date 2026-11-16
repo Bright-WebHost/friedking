@@ -5,6 +5,12 @@ import type { PlaceOrderPayload, PlacedOrder } from '@/lib/types'
 
 const MAX_QTY_PER_ITEM = 50
 
+/** Look up an unexpired WhatsApp link token (see wa_links in friedking_whatsapp_bot.sql). */
+async function findLink(token: string) {
+  const { data } = await createAdminClient().from('wa_links').select('phone, name').eq('token', token).gt('expires_at', new Date().toISOString()).maybeSingle()
+  return data ? { phone: data.phone as string, name: (data.name as string | null) ?? '' } : null
+}
+
 function bad(message: string, status = 400) {
   return NextResponse.json({ message }, { status })
 }
@@ -22,8 +28,11 @@ export async function POST(req: NextRequest) {
     return bad('Invalid request')
   }
 
-  const name = String(body.customerName ?? '').trim().slice(0, 80)
-  const phone = normalizePhone(String(body.customerPhone ?? ''))
+  // A valid WhatsApp link token decides who is ordering; the browser cannot override the number.
+  const linkToken = String(body.linkToken ?? '').trim()
+  const link = /^[0-9a-f]{32}$/.test(linkToken) ? await findLink(linkToken) : null
+  const phone = link ? link.phone : normalizePhone(String(body.customerPhone ?? ''))
+  const name = String((link?.name || body.customerName) ?? '').trim().slice(0, 80)
   const orderType = body.orderType
   const paymentMethod = body.paymentMethod
   const address = String(body.deliveryAddress ?? '').trim().slice(0, 400)
@@ -42,10 +51,13 @@ export async function POST(req: NextRequest) {
 
   // Merge duplicate lines and validate quantities.
   const qtyById = new Map<string, number>()
+  const noteById = new Map<string, string>()
   for (const line of body.items) {
     const qty = Number(line?.quantity)
     if (typeof line?.itemId !== 'string' || !Number.isInteger(qty) || qty < 1) return bad('Invalid cart')
     qtyById.set(line.itemId, (qtyById.get(line.itemId) ?? 0) + qty)
+    const note = String(line?.note ?? '').trim().slice(0, 300)
+    if (note) noteById.set(line.itemId, note)
   }
   for (const qty of qtyById.values()) {
     if (qty > MAX_QTY_PER_ITEM) return bad(`Maximum ${MAX_QTY_PER_ITEM} of one item per order`)
@@ -128,6 +140,7 @@ export async function POST(req: NextRequest) {
         unit_price_paise: l.pricePaise,
         quantity: l.quantity,
         line_total_paise: l.pricePaise * l.quantity,
+        notes: noteById.get(l.id) ?? null,
       }))
     )
     if (linesErr) {

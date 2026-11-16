@@ -61,7 +61,7 @@ export default function Chat() {
             <div className="msgs" ref={box}>
               {(thread.data ?? []).length ? thread.data!.map((m) => (
                 <div key={m.id} className={`m ${m.direction === 'inbound' ? 'in' : 'out'}`}>{m.content}
-                  <small>{m.sender || (m.direction === 'inbound' ? 'Customer' : 'Bot')} · {ist(m.created_at)}{m.direction === 'outbound' && m.delivery_status === 'pending' ? ' · queued' : m.delivery_status === 'failed' ? ' · not sent' : ''}</small></div>
+                  <small>{m.sender || (m.direction === 'inbound' ? 'Customer' : 'Bot')} · {ist(m.created_at)}{m.direction === 'outbound' && (m.delivery_status === 'pending' || m.delivery_status === 'claimed') ? ' · sending' : m.delivery_status === 'failed' ? ' · not sent' : ''}</small></div>
               )) : <div className="none">No messages</div>}
             </div>
             <div className="compose">

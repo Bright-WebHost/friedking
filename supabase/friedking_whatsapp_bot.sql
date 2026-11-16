@@ -120,10 +120,77 @@ begin
   return v_id;
 end $$;
 
+-- ---------- private menu links: the WhatsApp button carries a token, never the bare phone number ----------
+-- The website exchanges the token for the customer's name and number (the number cannot be edited there),
+-- and /api/order uses the number stored here, not whatever the browser sends.
+create table if not exists public.wa_links (
+  token      text primary key,
+  branch_id  uuid not null references public.branches(id) on delete cascade,
+  phone      text not null,
+  name       text,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists wa_links_phone on public.wa_links(branch_id, phone, expires_at desc);
+alter table public.wa_links enable row level security;
+
+create or replace function public.fk_wa_link(p_branch uuid, p_phone text, p_name text default null)
+returns text language plpgsql security definer set search_path = public as $$
+declare v_phone text := public.fk_wa_phone(p_phone); v text;
+begin
+  select token into v from wa_links
+   where branch_id = p_branch and phone = v_phone and expires_at > now() + interval '12 hours'
+   order by expires_at desc limit 1;
+  if v is null then
+    delete from wa_links where expires_at < now() - interval '7 days';
+    v := replace(gen_random_uuid()::text, '-', '');
+    insert into wa_links (token, branch_id, phone, name, expires_at)
+      values (v, p_branch, v_phone, nullif(trim(p_name), ''), now() + interval '48 hours');
+  elsif nullif(trim(p_name), '') is not null then
+    update wa_links set name = coalesce(name, trim(p_name)) where token = v;
+  end if;
+  return v;
+end $$;
+
+-- ---------- Live Chat: staff replies typed in the dashboard are sent by n8n ----------
+alter table public.chat_messages add column if not exists error_message text;
+
+create or replace function public.claim_chat_replies(p_branch text default 'pandeshwar', p_limit int default 10)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare b branches%rowtype; v_ids uuid[]; r jsonb;
+begin
+  select * into b from branches where slug = p_branch;
+  if not found then return '[]'::jsonb; end if;
+  update chat_messages set delivery_status = 'failed', error_message = 'not sent: older than 10 minutes when picked up'
+   where branch_id = b.id and direction = 'outbound' and delivery_status = 'pending' and created_at < now() - interval '10 minutes';
+  update chat_messages set delivery_status = 'failed', error_message = 'not confirmed by WhatsApp'
+   where branch_id = b.id and direction = 'outbound' and delivery_status = 'claimed' and created_at < now() - interval '10 minutes';
+  select array_agg(id) into v_ids from (
+    select id from chat_messages where branch_id = b.id and direction = 'outbound' and delivery_status = 'pending'
+     order by created_at limit p_limit for update skip locked) s;
+  if v_ids is null then return '[]'::jsonb; end if;
+  update chat_messages set delivery_status = 'claimed' where id = any(v_ids);
+  select coalesce(jsonb_agg(jsonb_build_object(
+      'id', m.id, 'phone', ltrim(m.phone, '+'), 'content', m.content,
+      -- WhatsApp only allows free-form messages within 24 hours of the customer's last message
+      'in_window', exists (select 1 from chat_messages i where i.branch_id = b.id and i.phone = m.phone
+                            and i.direction = 'inbound' and i.created_at > now() - interval '24 hours')) order by m.created_at), '[]'::jsonb)
+    into r from chat_messages m where m.id = any(v_ids);
+  return r;
+end $$;
+
+create or replace function public.complete_chat_reply(p_id uuid, p_ok boolean, p_error text default null)
+returns void language sql security definer set search_path = public as $$
+  update chat_messages set delivery_status = case when p_ok then 'done'::outbox_status else 'failed'::outbox_status end,
+         error_message = case when p_ok then null else left(coalesce(p_error, 'send failed'), 500) end
+   where id = p_id;
+$$;
+
 -- ============================================================
 -- chat_context: everything the bot needs before it answers.
 -- ============================================================
-create or replace function public.chat_context(p_phone text, p_order text default null, p_branch text default 'pandeshwar')
+drop function if exists public.chat_context(text, text, text);
+create or replace function public.chat_context(p_phone text, p_order text default null, p_branch text default 'pandeshwar', p_name text default null)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   b branches%rowtype;
@@ -147,6 +214,12 @@ begin
       'delivery_time', '30 to 40 minutes',
       'menu_url', 'https://friedking.vercel.app/')
     || v_set;
+  -- the menu link carries a private token (n8n appends "&ph=..." to whatever is here)
+  v_set := v_set || jsonb_build_object('menu_url',
+      coalesce(v_set->>'menu_url', 'https://friedking.vercel.app/')
+      || case when position('?' in coalesce(v_set->>'menu_url', 'https://friedking.vercel.app/')) > 0 then '&' else '?' end
+      || 't=' || public.fk_wa_link(b.id, p_phone,
+           coalesce((select c.name from customers c where c.branch_id = b.id and c.phone = v_phone), p_name)));
 
   -- menu digest "Name|price" (rupees); "## Category" lines are headings the order parser skips
   for r in
@@ -399,7 +472,10 @@ create or replace function public.rider_confirm_payment(p_message_id text)
 returns jsonb language sql stable as $$ select jsonb_build_object('result', 'not_found') $$;
 
 -- ---------- access: the workflow uses the service key only ----------
-revoke all on function public.chat_context(text, text, text) from public, anon, authenticated;
+revoke all on function public.chat_context(text, text, text, text) from public, anon, authenticated;
+revoke all on function public.claim_chat_replies(text, int) from public, anon, authenticated;
+revoke all on function public.complete_chat_reply(uuid, boolean, text) from public, anon, authenticated;
+revoke all on function public.fk_wa_link(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.customer_draft(text, text, jsonb, text, text) from public, anon, authenticated;
 revoke all on function public.customer_amend(text, text, jsonb, numeric, text) from public, anon, authenticated;
 revoke all on function public.customer_confirm(text, text, text) from public, anon, authenticated;
@@ -410,14 +486,15 @@ revoke all on function public.receipt_order(text, text) from public, anon, authe
 revoke all on function public.fk_wa_order_json(uuid) from public, anon, authenticated;
 revoke all on function public.fk_wa_find_order(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.fk_wa_write_items(uuid, uuid, jsonb) from public, anon, authenticated;
-grant execute on function public.chat_context(text, text, text), public.customer_draft(text, text, jsonb, text, text),
+grant execute on function public.chat_context(text, text, text, text), public.claim_chat_replies(text, int), public.complete_chat_reply(uuid, boolean, text), public.customer_draft(text, text, jsonb, text, text),
   public.customer_amend(text, text, jsonb, numeric, text), public.customer_confirm(text, text, text),
   public.customer_cancel(text, text, text, text), public.rider_confirm_payment(text), public.receipt_order(text, text), public.open_table_session(text, text, text, text) to service_role;
 
 -- ============================================================
 -- Check: every row should say true
 -- ============================================================
-select 'chat_context()' as item, to_regprocedure('public.chat_context(text,text,text)') is not null as ok
+select 'chat_context()' as item, to_regprocedure('public.chat_context(text,text,text,text)') is not null as ok
+union all select 'claim_chat_replies()', to_regprocedure('public.claim_chat_replies(text,int)') is not null
 union all select 'customer_draft()', to_regprocedure('public.customer_draft(text,text,jsonb,text,text)') is not null
 union all select 'customer_confirm()', to_regprocedure('public.customer_confirm(text,text,text)') is not null
 union all select 'draft status', exists (select 1 from pg_enum e join pg_type t on t.oid = e.enumtypid where t.typname = 'order_status' and e.enumlabel = 'draft')

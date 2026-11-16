@@ -44,13 +44,16 @@ export interface OrderTotals {
 export interface PlaceOrderPayload {
   branchSlug: string
   customerName: string
+  /** Ignored when linkToken is valid: the phone stored for that WhatsApp link is used instead. */
   customerPhone: string
+  /** Token from the WhatsApp menu link (?t=). Proves the order comes from that WhatsApp number. */
+  linkToken?: string | null
   orderType: OrderType
   deliveryAddress: string | null
   paymentMethod: PaymentMethod
   specialInstructions: string | null
   idempotencyKey: string
-  items: Array<{ itemId: string; quantity: number }>
+  items: Array<{ itemId: string; quantity: number; note?: string }>
 }
 
 export interface PlacedOrder {
