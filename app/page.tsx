@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertCircle, Bike, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Loader2,
-  MapPin, Minus, Plus, Search, ShoppingBag, SlidersHorizontal, Store, Utensils, X,
+  MapPin, Minus, Plus, Search, ShoppingBag, SlidersHorizontal, Store, User, Utensils, X,
 } from 'lucide-react'
+import VerifyCard, { type VerifyState } from '@/components/VerifyCard'
+import AccountPanel, { type Account } from '@/components/AccountPanel'
 import type {
   Branch, CartItem, MenuCategory, MenuItem, OrderType, PaymentMethod, PlaceOrderPayload, PlacedOrder,
 } from '@/lib/types'
@@ -84,22 +86,22 @@ export default function CustomerPage() {
   // Set when the page was opened from the WhatsApp bot's link: name and number come from WhatsApp and are locked.
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [linked, setLinked] = useState<{ name: string; phoneMasked: string } | null>(null)
-  // Direct web orders prove their number by sending a code to our WhatsApp. enabled=false -> old manual number field.
-  const [verify, setVerify] = useState<{ enabled: boolean; secret: string; code: string; waUrl: string } | null>(null)
-  const [verified, setVerified] = useState<string | null>(null)
-  const [verifyBusy, setVerifyBusy] = useState(false)
-  const startVerify = useCallback(async () => {
-    setVerifyBusy(true)
+  // Every order is confirmed with a WhatsApp OTP (see components/VerifyCard). enabled=false -> old manual number field.
+  const [vs, setVs] = useState<VerifyState>({ enabled: false, secret: '', verified: false })
+  const [vsLoaded, setVsLoaded] = useState(false)
+  const [verifyKey, setVerifyKey] = useState(0)
+  // Logged-in customer profile (cookie), saved addresses and past orders.
+  const [account, setAccount] = useState<Account>({ loggedIn: false })
+  const [accountOpen, setAccountOpen] = useState(false)
+  const [saveAddr, setSaveAddr] = useState(true)
+  const loadAccount = useCallback(async () => {
     try {
-      const d = await readJson(await fetch('/api/verify/start', { method: 'POST' }))
-      setVerified(null)
-      setVerify(d.enabled ? d : { enabled: false, secret: '', code: '', waUrl: '' })
-    } catch {
-      setVerify({ enabled: false, secret: '', code: '', waUrl: '' })
-    } finally {
-      setVerifyBusy(false)
-    }
+      const d = await readJson(await fetch('/api/account/me', { cache: 'no-store' }))
+      setAccount(d.loggedIn ? d : { loggedIn: false })
+    } catch { /* stay logged out */ }
   }, [])
+  useEffect(() => { void loadAccount() }, [loadAccount])
+  useEffect(() => { if (account.loggedIn && account.name) setName((n) => n || account.name!) }, [account])
 
   // ── Load a branch menu ────────────────────────────────────────────────────
   const loadMenu = useCallback(async (slug: string) => {
@@ -256,10 +258,10 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (!branch || submitting) return
-    const needVerify = !!verify?.enabled
+    const needVerify = vs.enabled
     const e164 = linked || needVerify ? '' : normalizePhone(phone)
     if (!name.trim()) return setFormError('Please enter your name.')
-    if (needVerify && !verified) return setFormError('Please verify your WhatsApp number first.')
+    if (needVerify && !vs.verified) return setFormError('Please verify the OTP sent to your WhatsApp first.')
     if (!linked && !needVerify && !e164) return setFormError('Please enter a valid 10-digit mobile number.')
     if (orderType === 'delivery' && !address.trim()) return setFormError('Please enter your delivery address.')
 
@@ -271,7 +273,7 @@ export default function CustomerPage() {
         customerName: name.trim(),
         customerPhone: e164 ?? '',
         linkToken: linked ? linkToken : null,
-        verifySecret: needVerify ? verify!.secret : null,
+        verifySecret: needVerify ? vs.secret : null,
         orderType,
         deliveryAddress: orderType === 'delivery' ? address.trim() : null,
         paymentMethod: payment,
@@ -287,8 +289,11 @@ export default function CustomerPage() {
       const data = await readJson(res)
       if (!res.ok) throw new Error(data.message ?? 'Could not place your order.')
       setPlaced(data)
-      setVerify(null)
-      setVerified(null)
+      setVerifyKey((k) => k + 1)
+      setVs({ enabled: vs.enabled, secret: '', verified: false })
+      if (account.loggedIn && saveAddr && orderType === 'delivery' && address.trim()) {
+        void fetch('/api/account/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', address: address.trim() }) }).then(loadAccount)
+      } else if (account.loggedIn) void loadAccount()
       setCart([])
       setNotes('')
       setScreen('confirmed')
@@ -299,20 +304,6 @@ export default function CustomerPage() {
       setSubmitting(false)
     }
   }
-
-  useEffect(() => {
-    if (screen === 'checkout' && !verify && !verifyBusy) void startVerify()
-  }, [screen, linked, verify, verifyBusy, startVerify])
-  useEffect(() => {
-    if (screen !== 'checkout' || !verify?.enabled || verified) return
-    const t = setInterval(async () => {
-      try {
-        const d = await readJson(await fetch(`/api/verify/status?s=${verify.secret}`))
-        if (d.verified) setVerified(d.phoneMasked)
-      } catch { /* try again */ }
-    }, 3000)
-    return () => clearInterval(t)
-  }, [screen, verify, verified])
 
   if (!ready) return null
 
@@ -459,25 +450,8 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              {verify?.enabled && (verified ? (
-                <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
-                  <Check className="h-5 w-5 shrink-0 text-green-700" strokeWidth={3} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-green-900">WhatsApp number verified</p>
-                    <p className="truncate text-sm text-green-800">{verified}</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-xl border border-fk-line bg-white px-4 py-3">
-                  <p className="text-sm font-bold">Verify your WhatsApp number</p>
-                  <p className="mt-1 text-sm text-fk-muted">Tap the button and send the message that opens in WhatsApp. This page continues by itself.</p>
-                  <a href={verify.waUrl} target="_blank" rel="noopener noreferrer" className="mt-3 flex items-center justify-center gap-2 rounded-xl bg-[#25d366] px-4 py-3 text-sm font-bold text-white">
-                    Verify on WhatsApp
-                  </a>
-                  <p className="mt-2 text-center text-xs text-fk-muted">Or send <b>VERIFY {verify.code}</b> to our WhatsApp number. Waiting for your message…</p>
-                </div>
-              ))}
-              {!linked && !verify?.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
+              <VerifyCard key={verifyKey} onChange={(v) => { setVs(v); setVsLoaded(true) }} />
+              {!linked && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
                   className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm"
@@ -490,14 +464,31 @@ export default function CustomerPage() {
                 />
               </div>}
               {orderType === 'delivery' && (
-                <textarea
-                  className={`${input} resize-none`}
-                  rows={3}
-                  placeholder="Delivery address with landmark"
-                  autoComplete="street-address"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
+                <>
+                  {account.loggedIn && (account.addresses ?? []).length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {account.addresses!.map((a) => (
+                        <button key={a.id} type="button" onClick={() => setAddress(a.address)}
+                          className={`max-w-full truncate rounded-full border px-3 py-1.5 text-xs font-semibold ${address === a.address ? 'border-fk-red bg-fk-red/10 text-fk-red' : 'border-fk-line'}`}>
+                          {a.label || a.address.slice(0, 28)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <textarea
+                    className={`${input} resize-none`}
+                    rows={3}
+                    placeholder="Delivery address with landmark"
+                    autoComplete="street-address"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                  />
+                  {account.loggedIn && (
+                    <label className="flex items-center gap-2 text-sm text-fk-muted">
+                      <input type="checkbox" checked={saveAddr} onChange={(e) => setSaveAddr(e.target.checked)} /> Save this address to my profile
+                    </label>
+                  )}
+                </>
               )}
             </div>
           </Card>
@@ -570,6 +561,11 @@ export default function CustomerPage() {
               className="h-11 w-full rounded-full border border-fk-line bg-white pl-10 pr-4 text-base font-medium shadow-sm outline-none placeholder:text-fk-muted/70 focus:border-fk-red/50 sm:text-[15px]"
             />
           </label>
+          <button onClick={() => setAccountOpen(true)} aria-label={account.loggedIn ? 'My profile' : 'Log in'}
+            className={`flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-full border px-3 text-sm font-bold ${account.loggedIn ? 'border-fk-red bg-fk-red text-white' : 'border-fk-line'}`}>
+            <User className="h-[18px] w-[18px]" />
+            <span className="hidden sm:inline">{account.loggedIn ? 'Profile' : 'Log in'}</span>
+          </button>
         </header>
 
         {/* Branch banner */}
@@ -859,6 +855,7 @@ export default function CustomerPage() {
           </>
         )}
       </AnimatePresence>
+      {accountOpen && <AccountPanel account={account} onClose={() => setAccountOpen(false)} onChanged={loadAccount} />}
     </div>
   )
 }
