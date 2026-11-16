@@ -134,6 +134,14 @@ export default function Tables() {
                       <div className="rh"><span>Round {i + 1} · {statusLabel(o)}</span><span>{rs(o.total_paise)}</span></div>
                       <LineItems o={o} />
                       <div className="mini">
+                        {o.status === 'pending' && <button className="go" onClick={async () => {
+                          try { await api.post('orders', 'accept', { orderId: o.id, prepMinutes: 20 }); toast(`#${o.order_number} accepted`); void reload() }
+                          catch (e) { toast(e instanceof Error ? e.message : 'Could not accept') }
+                        }}>✓ Accept</button>}
+                        {o.status === 'pending' && <button className="danger" onClick={async () => {
+                          try { await api.post('orders', 'decline', { orderId: o.id, reason: 'Kitchen full' }); toast(`#${o.order_number} declined`); void reload() }
+                          catch (e) { toast(e instanceof Error ? e.message : 'Could not decline') }
+                        }}>Reject</button>}
                         {['preparing', 'confirmed', 'ready'].includes(o.status) && <button onClick={() => act.markDone(o)}>✓ Served</button>}
                         {canEdit(o) && <button onClick={() => act.edit(o)}>Edit round</button>}
                       </div>

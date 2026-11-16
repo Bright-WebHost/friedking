@@ -368,6 +368,7 @@ export function printReceipt(o: DOrder, branch: DBranch, settings: Record<Settin
     <hr><div class="r"><span>Subtotal</span><span>${rs(o.subtotal_paise)}</span></div>
     <div class="r"><span>CGST ${gstPct / 2}%</span><span>${rs(o.gst_paise / 2)}</span></div>
     <div class="r"><span>SGST ${gstPct / 2}%</span><span>${rs(o.gst_paise / 2)}</span></div>
+    ${o.order_type === 'delivery' && o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise) > 0 ? `<div class="r"><span>Delivery fee</span><span>${rs(o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise))}</span></div>` : ''}
     ${o.discount_paise ? `<div class="r"><span>Discount</span><span>−${rs(o.discount_paise)}</span></div>` : ''}
     ${o.loyalty_discount_paise ? `<div class="r"><span>Points (${o.loyalty_points_redeemed})</span><span>−${rs(o.loyalty_discount_paise)}</span></div>` : ''}
     <div class="r t"><span>TOTAL</span><span>${rs(o.total_paise)}</span></div>

@@ -101,8 +101,18 @@ export default function Settings() {
           <div style={{ flex: 1 }}>{field('Minimum delivery order (₹)', <input className="f" inputMode="numeric" value={st.min_order} onChange={setSet('min_order')} />)}</div>
           <div style={{ flex: 1 }}>{field('Delivery fee (₹)', <input className="f" inputMode="numeric" value={st.delivery_fee} onChange={setSet('delivery_fee')} />)}</div>
         </div>
+        <label className="avrow" style={{ marginTop: 4 }}>
+          <input type="checkbox" className="cbox" checked={st.free_delivery_enabled === 'true'} onChange={(e) => setS({ ...st, free_delivery_enabled: e.target.checked ? 'true' : 'false' })} />
+          <span><b>Free delivery offer</b> (customers see a progress bar and a celebration when they unlock it)</span>
+        </label>
+        {st.free_delivery_enabled === 'true' && (
+          <div style={{ marginTop: 8 }}>
+            {field('Delivery is free when the food total (before GST) is at least (₹)', <input className="f" inputMode="numeric" value={st.free_delivery_above} onChange={setSet('free_delivery_above')} />)}
+            {(!Number(st.delivery_fee) || !Number(st.free_delivery_above)) && <div style={{ fontSize: 12, color: 'var(--red)' }}>The offer only works when both the delivery fee and this amount are above 0.</div>}
+          </div>
+        )}
         {field('Delivery note shown to customers', <input className="f" value={st.delivery_note} onChange={setSet('delivery_note')} />)}
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Saved per branch. The customer checkout starts using minimum order, fee and pincodes once the client confirms the delivery rules.</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Saved per branch. The website uses the fee, the free-delivery offer, the minimum order, the pincodes below and the order types above.</div>
       </div>
 
       <div className="panel"><h3>Delivery pincodes</h3>

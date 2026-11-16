@@ -88,6 +88,9 @@ export async function GET(request: NextRequest) {
     if (order.discount_paise > 0) summary.push(['Discount', `-${rs(order.discount_paise)}`])
     if (order.loyalty_discount_paise > 0) summary.push(['Reward points', `-${rs(order.loyalty_discount_paise)}`])
     summary.push(['GST (CGST + SGST)', rs(order.gst_paise)])
+    // Delivery fee = whatever the total has beyond items, GST and discounts (no extra column needed).
+    const fee = order.total_paise - (order.subtotal_paise - order.discount_paise - order.loyalty_discount_paise + order.gst_paise)
+    if (order.order_type === 'delivery' && fee > 0) summary.push(['Delivery fee', rs(fee)])
 
     const COLS = 40, SQ = W / COLS
     const checker = (flip: boolean) => (

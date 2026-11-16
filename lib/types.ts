@@ -1,4 +1,4 @@
-export type OrderType = 'pickup' | 'delivery'
+export type OrderType = 'pickup' | 'delivery' | 'dine-in'
 export type PaymentMethod = 'cash'
 
 export interface Branch {
@@ -52,6 +52,10 @@ export interface PlaceOrderPayload {
   verifySecret?: string | null
   orderType: OrderType
   deliveryAddress: string | null
+  /** 6-digit pincode of a delivery address. */
+  deliveryPincode?: string | null
+  /** Table number for dine-in orders (website QR on the table). Dine-in orders skip the WhatsApp OTP. */
+  tableNumber?: number | null
   paymentMethod: PaymentMethod
   specialInstructions: string | null
   idempotencyKey: string

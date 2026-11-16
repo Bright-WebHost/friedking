@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verificationEnabled } from '@/lib/verify'
+import { deliveryFeeFor, loadDeliveryRules } from '@/lib/delivery'
+import { findTable, openSession } from '@/lib/tables'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { calcTotals, normalizePhone } from '@/lib/utils'
 import type { PlaceOrderPayload, PlacedOrder } from '@/lib/types'
 
 const MAX_QTY_PER_ITEM = 50
+const MAX_ROUNDS_PER_TABLE = 40
+
 
 /** Look up an unexpired WhatsApp link token (see wa_links in friedking_whatsapp_bot.sql). */
 async function findLink(token: string) {
@@ -32,6 +36,8 @@ export async function POST(req: NextRequest) {
   // A valid WhatsApp link token decides who is ordering; the browser cannot override the number.
   const linkToken = String(body.linkToken ?? '').trim()
   const link = /^[0-9a-f]{32}$/.test(linkToken) ? await findLink(linkToken) : null
+  const isDineIn = body.orderType === 'dine-in'
+  const tableNumber = Number(body.tableNumber)
   let phone = link ? link.phone : normalizePhone(String(body.customerPhone ?? ''))
   const verifySecret = /^[0-9a-f]{48}$/.test(String(body.verifySecret ?? '')) ? String(body.verifySecret) : ''
   const name = String((link?.name || body.customerName) ?? '').trim().slice(0, 80)
@@ -40,12 +46,15 @@ export async function POST(req: NextRequest) {
   const address = String(body.deliveryAddress ?? '').trim().slice(0, 400)
   const notes = String(body.specialInstructions ?? '').trim().slice(0, 400)
   const idempotencyKey = String(body.idempotencyKey ?? '').trim().slice(0, 100)
+  const pincode = String(body.deliveryPincode ?? '').trim()
   const slug = String(body.branchSlug ?? '').trim().toLowerCase()
 
   if (!slug) return bad('Branch is required')
   if (!name) return bad('Please enter your name')
-  if (!phone && !verifySecret) return bad('Please enter a valid 10-digit mobile number')
-  if (orderType !== 'pickup' && orderType !== 'delivery') return bad('Invalid order type')
+  if (orderType !== 'pickup' && orderType !== 'delivery' && orderType !== 'dine-in') return bad('Invalid order type')
+  if (isDineIn && (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 999)) return bad('Invalid table')
+  if (!isDineIn && !phone && !verifySecret) return bad('Please enter a valid 10-digit mobile number')
+  if (orderType === 'delivery' && !/^\d{6}$/.test(pincode)) return bad('Please enter a valid 6-digit pincode')
   if (paymentMethod !== 'cash') return bad('Invalid payment method')
   if (orderType === 'delivery' && !address) return bad('Please enter your delivery address')
   if (!idempotencyKey) return bad('Invalid request')
@@ -81,7 +90,7 @@ export async function POST(req: NextRequest) {
 
     // Every web order must prove the phone by a WhatsApp message (skipped only while the SQL is not installed).
     let verificationId: string | null = null
-    if (await verificationEnabled(supabase)) {
+    if (!isDineIn && await verificationEnabled(supabase)) {
       const { data: v } = verifySecret
         ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at').eq('secret', verifySecret).maybeSingle()
         : { data: null }
@@ -89,7 +98,7 @@ export async function POST(req: NextRequest) {
       if (link && v.phone !== link.phone) return bad('Please verify from the same WhatsApp number you chatted with.', 403)
       phone = v.phone as string
       verificationId = v.id as string
-    } else if (!phone) {
+    } else if (!phone && !isDineIn) {
       return bad('Please enter a valid 10-digit mobile number')
     }
 
@@ -121,6 +130,50 @@ export async function POST(req: NextRequest) {
     }))
     const totals = calcTotals(lines)
 
+    // Branch rules from Dashboard > Settings: order types, delivery area, minimum order, delivery fee / free delivery.
+    const rules = await loadDeliveryRules(supabase, branch.id)
+    let deliveryFeePaise = 0
+    if (orderType === 'pickup' && !rules.pickup) return bad('Takeaway is not available right now.')
+    if (isDineIn && !rules.dineIn) return bad('Dine-in ordering is not available right now.')
+    if (orderType === 'delivery') {
+      if (!rules.delivery) return bad('Delivery is not available right now.')
+      if (rules.pincodes.length && !rules.pincodes.some((p) => p.pincode === pincode)) return bad(`Sorry, we do not deliver to ${pincode} yet.`)
+      if (totals.subtotalPaise < rules.minOrderPaise) return bad(`Minimum order for delivery is ₹${rules.minOrderPaise / 100}.`)
+      deliveryFeePaise = deliveryFeeFor(rules, totals.subtotalPaise)
+    }
+    const grandTotalPaise = totals.totalPaise + deliveryFeePaise
+
+    // Dine-in: attach to the open tab of the table (or open it). No OTP: the customer is sitting at the table.
+    let sessionId: string | null = null
+    if (isDineIn) {
+      const table = await findTable(supabase, branch.id, tableNumber)
+      if (!table) return bad(`Table ${tableNumber} was not found. Please ask the staff.`, 404)
+      const open = await openSession(supabase, table.id)
+      if (open) {
+        const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('table_session_id', open.id)
+        if ((count ?? 0) >= MAX_ROUNDS_PER_TABLE) return bad('This table has too many orders. Please ask the staff.', 429)
+        const sessionPhone = open.phone ?? phone
+        if (!open.phone || !open.customer_name) {
+          await supabase.from('table_sessions').update({ phone: sessionPhone, customer_name: open.customer_name ?? name }).eq('id', open.id)
+        }
+        phone = sessionPhone
+        sessionId = open.id
+      } else {
+        if (!phone) return bad('Please enter a valid 10-digit WhatsApp number. Your bill is sent there.')
+        const { data: created, error: sessErr } = await supabase.from('table_sessions').insert({
+          branch_id: branch.id, table_id: table.id, status: 'open', opened_by_name: 'Website', customer_name: name, phone,
+        }).select('id').single()
+        if (sessErr || !created) {
+          // Someone opened the same table a moment ago: join that tab.
+          const again = await openSession(supabase, table.id)
+          if (!again) throw new Error(sessErr?.message ?? 'table session failed')
+          sessionId = again.id
+          phone = again.phone ?? phone
+        } else sessionId = created.id
+      }
+      if (!phone) return bad('Please enter a valid 10-digit WhatsApp number. Your bill is sent there.')
+    }
+
     // Customer is unique per (branch, phone).
     const { data: customer, error: custErr } = await supabase
       .from('customers')
@@ -137,10 +190,13 @@ export async function POST(req: NextRequest) {
         status: 'pending',
         subtotal_paise: totals.subtotalPaise,
         gst_paise: totals.gstPaise,
-        total_paise: totals.totalPaise,
+        total_paise: grandTotalPaise,
         order_type: orderType,
         payment_method: paymentMethod,
         delivery_address: orderType === 'delivery' ? address : null,
+        delivery_pincode: orderType === 'delivery' ? pincode : null,
+        ...(deliveryFeePaise > 0 ? { delivery_fee_paise: deliveryFeePaise } : {}),
+        ...(isDineIn ? { table_session_id: sessionId, table_number: tableNumber } : {}),
         special_instructions: notes || null,
         idempotency_key: idempotencyKey,
       })
@@ -180,16 +236,21 @@ export async function POST(req: NextRequest) {
         orderType,
         paymentMethod,
         deliveryAddress: orderType === 'delivery' ? address : null,
+        // Added later (additive): pincode, delivery fee and table number. totalPaise includes the delivery fee.
+        deliveryPincode: orderType === 'delivery' ? pincode : null,
+        deliveryFeePaise,
+        tableNumber: isDineIn ? tableNumber : null,
         specialInstructions: notes || null,
         items: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPricePaise: l.pricePaise })),
         ...totals,
+        totalPaise: grandTotalPaise,
       },
     })
     if (eventErr) console.error('[POST /api/order] order_events (order still placed):', eventErr.message)
 
     if (verificationId) await supabase.from('wa_verifications').update({ consumed_at: new Date().toISOString() }).eq('id', verificationId)
 
-    const placed: PlacedOrder = { orderId: order.id, orderNumber: order.order_number, totalPaise: totals.totalPaise }
+    const placed: PlacedOrder = { orderId: order.id, orderNumber: order.order_number, totalPaise: grandTotalPaise }
     return NextResponse.json(placed, { status: 201 })
   } catch (e) {
     console.error('[POST /api/order]', e instanceof Error ? e.message : e)

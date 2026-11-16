@@ -4,16 +4,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertCircle, Bike, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Loader2,
-  MapPin, Minus, Plus, Search, ShoppingBag, SlidersHorizontal, Store, User, Utensils, X,
+  Home, MapPin, Minus, Plus, Search, ShoppingBag, SlidersHorizontal, Store, User, Utensils, X,
 } from 'lucide-react'
 import VerifyCard, { type VerifyState } from '@/components/VerifyCard'
 import AccountPanel, { type Account } from '@/components/AccountPanel'
+import AddressSheet from '@/components/AddressSheet'
+import TableTab, { type TableInfo } from '@/components/TableTab'
+import { Celebration, FreeDeliveryProgress } from '@/components/FreeDelivery'
+import { joinAddress, parseAddress, type DeliveryAddress } from '@/lib/address'
+import { deliveryFeeFor, type DeliveryRules } from '@/lib/delivery'
 import type {
   Branch, CartItem, MenuCategory, MenuItem, OrderType, PaymentMethod, PlaceOrderPayload, PlacedOrder,
 } from '@/lib/types'
 import { calcTotals, formatPrice, formatTime, normalizePhone } from '@/lib/utils'
 
-type Screen = 'branches' | 'menu' | 'checkout' | 'confirmed'
+type Screen = 'branches' | 'menu' | 'checkout' | 'confirmed' | 'table'
 type DietFilter = 'all' | 'veg' | 'nonveg'
 type Promotion = {
   id: string
@@ -76,7 +81,17 @@ export default function CustomerPage() {
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [orderType, setOrderType] = useState<OrderType>('pickup')
-  const [address, setAddress] = useState('')
+  const [addr, setAddr] = useState<DeliveryAddress | null>(null)
+  const [addrOpen, setAddrOpen] = useState(false)
+  const [addrDraft, setAddrDraft] = useState<Partial<DeliveryAddress> | null>(null)
+  // Asked once when the customer opens the menu: delivery or takeaway (skipped for a table QR).
+  const [orderChosen, setOrderChosen] = useState(false)
+  const [rules, setRules] = useState<DeliveryRules | null>(null)
+  const [celebrate, setCelebrate] = useState(false)
+  // Dine-in: ?table=3 (table QR) or a WhatsApp link from a customer who has an open table.
+  const [tableNo, setTableNo] = useState<number | null>(null)
+  const [tableInfo, setTableInfo] = useState<TableInfo | null>(null)
+  const tabShown = useRef(false)
   const payment: PaymentMethod = 'cash'
   const [notes, setNotes] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
@@ -133,6 +148,12 @@ export default function CustomerPage() {
         })
       } catch { /* storage unavailable */ }
       setCart(restored)
+      void fetch(`/api/rules?branch=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+        .then(readJson).then((d) => { if (d.rules) setRules(d.rules) }).catch(() => undefined)
+      try {
+        const last = JSON.parse(localStorage.getItem('fk-addr') ?? 'null')
+        if (last && typeof last.text === 'string' && /^\d{6}$/.test(last.pincode ?? '')) setAddr(last)
+      } catch { /* storage unavailable */ }
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : 'Unable to load menu')
     } finally {
@@ -167,9 +188,12 @@ export default function CustomerPage() {
           setLinkToken(token)
           setLinked({ name: d.name ?? '', phoneMasked: d.phoneMasked })
           if (d.name) setName(d.name)
+          if (Number.isInteger(d.table) && d.table > 0) { setTableNo(d.table); setOrderType('dine-in'); setOrderChosen(true) }
         })
         .catch(() => undefined)
     }
+    const tp = Number(params.get('table'))
+    if (Number.isInteger(tp) && tp > 0 && tp < 1000) { setTableNo(tp); setOrderType('dine-in'); setOrderChosen(true) }
     const slug = ONLY_BRANCH ?? params.get('branch')?.trim().toLowerCase()
     if (slug) loadMenu(slug)
     else loadBranches()
@@ -211,6 +235,43 @@ export default function CustomerPage() {
   )
 
   useEffect(() => { if (cartCount === 0) setCartOpen(false) }, [cartCount])
+
+  // ── Dine-in table tab: poll the open tab so the diner sees each round move through the kitchen ──
+  const loadTab = useCallback(async () => {
+    if (!branch || !tableNo) return
+    try {
+      const d = await readJson(await fetch(`/api/table?branch=${encodeURIComponent(branch.slug)}&table=${tableNo}`, { cache: 'no-store' }))
+      if (d.exists === false) {
+        // Unknown table number: fall back to the normal delivery / takeaway flow.
+        setTableNo(null); setTableInfo(null); setOrderType('pickup'); setOrderChosen(false); setScreen((sc) => (sc === 'table' ? 'menu' : sc))
+        return
+      }
+      if (typeof d.open === 'boolean') {
+        setTableInfo(d)
+        if (d.open && d.rounds.length > 0 && !tabShown.current) { tabShown.current = true; setScreen((sc) => (sc === 'menu' ? 'table' : sc)) }
+      }
+    } catch { /* keep the last tab on a network blip */ }
+  }, [branch, tableNo])
+  useEffect(() => {
+    if (!tableNo || !branch) return
+    void loadTab()
+    const t = window.setInterval(() => { if (document.visibilityState === 'visible') void loadTab() }, 10000)
+    return () => window.clearInterval(t)
+  }, [tableNo, branch, loadTab])
+
+  // ── Delivery fee and the free-delivery offer (rules come from Dashboard > Settings) ──
+  const isDelivery = orderType === 'delivery'
+  const deliveryFeePaise = isDelivery && rules ? deliveryFeeFor(rules, totals.subtotalPaise) : 0
+  const grandTotalPaise = totals.totalPaise + deliveryFeePaise
+  const offerPaise = isDelivery && rules && rules.freeAbovePaise > 0 ? rules.freeAbovePaise : 0
+  const unlocked = offerPaise > 0 && cartCount > 0 && totals.subtotalPaise >= offerPaise
+  const wasUnlocked = useRef(false)
+  useEffect(() => {
+    if (unlocked && !wasUnlocked.current) setCelebrate(true)
+    wasUnlocked.current = unlocked
+  }, [unlocked])
+  const minOrderShort = isDelivery && rules && rules.minOrderPaise > totals.subtotalPaise ? rules.minOrderPaise - totals.subtotalPaise : 0
+  const pincodeOk = !isDelivery || !addr || !rules?.pincodes.length || rules.pincodes.some((p) => p.pincode === addr.pincode)
 
   // ── Menu filtering, grouped by category ───────────────────────────────────
   const sections = useMemo(() => {
@@ -258,12 +319,16 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (!branch || submitting) return
-    const needVerify = vs.enabled
-    const e164 = linked || needVerify ? '' : normalizePhone(phone)
+    const dineIn = orderType === 'dine-in' && tableNo !== null
+    const needVerify = vs.enabled && !dineIn
+    const needPhoneField = dineIn ? !linked && !tableInfo?.hasContact : !linked && !needVerify
+    const e164 = needPhoneField ? normalizePhone(phone) : ''
     if (!name.trim()) return setFormError('Please enter your name.')
     if (needVerify && !vs.verified) return setFormError('Please verify the OTP sent to your WhatsApp first.')
-    if (!linked && !needVerify && !e164) return setFormError('Please enter a valid 10-digit mobile number.')
-    if (orderType === 'delivery' && !address.trim()) return setFormError('Please enter your delivery address.')
+    if (needPhoneField && !e164) return setFormError('Please enter a valid 10-digit mobile number.')
+    if (orderType === 'delivery' && !addr) return setFormError('Please add your delivery address.')
+    if (orderType === 'delivery' && !pincodeOk) return setFormError(`Sorry, we do not deliver to ${addr?.pincode} yet.`)
+    if (minOrderShort > 0) return setFormError(`Add ${formatPrice(minOrderShort)} more to reach the minimum delivery order.`)
 
     setFormError(null)
     setSubmitting(true)
@@ -275,7 +340,9 @@ export default function CustomerPage() {
         linkToken: linked ? linkToken : null,
         verifySecret: needVerify ? vs.secret : null,
         orderType,
-        deliveryAddress: orderType === 'delivery' ? address.trim() : null,
+        tableNumber: dineIn ? tableNo : null,
+        deliveryAddress: orderType === 'delivery' && addr ? addr.text : null,
+        deliveryPincode: orderType === 'delivery' && addr ? addr.pincode : null,
         paymentMethod: payment,
         specialInstructions: notes.trim() || null,
         idempotencyKey: idempotencyKey.current,
@@ -289,14 +356,20 @@ export default function CustomerPage() {
       const data = await readJson(res)
       if (!res.ok) throw new Error(data.message ?? 'Could not place your order.')
       setPlaced(data)
+      if (orderType === 'delivery' && addr) { try { localStorage.setItem('fk-addr', JSON.stringify(addr)) } catch { /* storage unavailable */ } }
       setVerifyKey((k) => k + 1)
       setVs({ enabled: vs.enabled, secret: '', verified: false })
-      if (account.loggedIn && saveAddr && orderType === 'delivery' && address.trim()) {
-        void fetch('/api/account/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', address: address.trim() }) }).then(loadAccount)
+      if (account.loggedIn && saveAddr && orderType === 'delivery' && addr) {
+        void fetch('/api/account/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', address: joinAddress(addr), label: addr.label }) }).then(loadAccount)
       } else if (account.loggedIn) void loadAccount()
       setCart([])
       setNotes('')
-      setScreen('confirmed')
+      if (dineIn) {
+        // Dine-in: back to the table tab, where the diner can follow this round and add more.
+        tabShown.current = true
+        setScreen('table')
+        void loadTab()
+      } else setScreen('confirmed')
       window.scrollTo(0, 0)
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Could not place your order.')
@@ -304,6 +377,12 @@ export default function CustomerPage() {
       setSubmitting(false)
     }
   }
+
+  const addressCards = (() => {
+    const saved = (account.addresses ?? []).map((a) => ({ key: a.id, ...parseAddress(a.address, a.label ?? '') }))
+    const extra = addr && !saved.some((c) => c.text === addr.text && c.pincode === addr.pincode) ? [{ key: 'current', ...addr }] : []
+    return [...extra, ...saved]
+  })()
 
   if (!ready) return null
 
@@ -364,6 +443,23 @@ export default function CustomerPage() {
     )
   }
 
+  // ══ TABLE TAB (dine-in) ═══════════════════════════════════════════════════
+  if (screen === 'table' && tableNo !== null) {
+    return (
+      <TableTab
+        table={tableNo}
+        info={tableInfo}
+        branchName={shortName(branch?.name)}
+        onAddMore={() => setScreen('menu')}
+        onNewTab={() => {
+          window.history.replaceState(null, '', window.location.pathname)
+          tabShown.current = false
+          setTableNo(null); setTableInfo(null); setOrderType('pickup'); setOrderChosen(false); setScreen('menu')
+        }}
+      />
+    )
+  }
+
   // ══ CONFIRMED ═════════════════════════════════════════════════════════════
   if (screen === 'confirmed' && placed) {
     return (
@@ -387,7 +483,7 @@ export default function CustomerPage() {
             <p className="mt-4 inline-flex flex-wrap justify-center gap-x-2 rounded-full bg-fk-bg px-4 py-1.5 text-sm font-medium">
               <span>{formatPrice(placed.totalPaise)}</span>·
               <span>Cash</span>·
-              <span>{orderType === 'pickup' ? 'Pickup' : 'Delivery'}</span>
+              <span>{orderType === 'pickup' ? 'Takeaway' : 'Delivery'}</span>
             </p>
             <p className="mt-4 text-sm text-fk-muted">The branch will confirm your order shortly.</p>
             <button
@@ -422,16 +518,27 @@ export default function CustomerPage() {
         </header>
 
         <div className="mx-auto max-w-xl space-y-4 px-4 pt-4">
-          <Card title="How would you like it?">
-            <div className="grid grid-cols-2 gap-2">
-              <Choice active={orderType === 'pickup'} onClick={() => setOrderType('pickup')}>
-                <Store className="h-4 w-4" /> Pickup
-              </Choice>
-              <Choice active={orderType === 'delivery'} onClick={() => setOrderType('delivery')}>
-                <Bike className="h-4 w-4" /> Delivery
-              </Choice>
+          {tableNo !== null ? (
+            <div className="flex items-center gap-3 rounded-2xl border border-fk-red/30 bg-fk-tint px-4 py-3">
+              <Utensils className="h-5 w-5 shrink-0 text-fk-red" />
+              <div><p className="text-sm font-extrabold">Dine-in · Table {tableNo}</p><p className="text-xs text-fk-muted">Your order goes straight to the kitchen. No OTP needed.</p></div>
             </div>
-          </Card>
+          ) : (
+            <div className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1 shadow-sm ring-1 ring-fk-line" role="group" aria-label="Order type">
+              {(!rules || rules.pickup) && (
+                <button type="button" onClick={() => setOrderType('pickup')} aria-pressed={orderType === 'pickup'}
+                  className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition ${orderType === 'pickup' ? 'bg-fk-red text-white shadow' : 'text-fk-muted'}`}>
+                  <Store className="h-4 w-4" /> Takeaway
+                </button>
+              )}
+              {(!rules || rules.delivery) && (
+                <button type="button" onClick={() => setOrderType('delivery')} aria-pressed={orderType === 'delivery'}
+                  className={`flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition ${orderType === 'delivery' ? 'bg-fk-red text-white shadow' : 'text-fk-muted'}`}>
+                  <Bike className="h-4 w-4" /> Delivery
+                </button>
+              )}
+            </div>
+          )}
 
           <Card title="Your details">
             <div className="space-y-3">
@@ -450,8 +557,8 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              <VerifyCard key={verifyKey} linkToken={linked ? linkToken : null} useSession={account.loggedIn} fixedMasked={linked ? linked.phoneMasked : account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />
-              {!linked && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
+              {orderType !== 'dine-in' && <VerifyCard key={verifyKey} linkToken={linked ? linkToken : null} useSession={account.loggedIn} fixedMasked={linked ? linked.phoneMasked : account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
+              {!linked && orderType !== 'dine-in' && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
                   className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm"
@@ -463,26 +570,42 @@ export default function CustomerPage() {
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
                 />
               </div>}
+              {orderType === 'dine-in' && !linked && !tableInfo?.hasContact && (
+                <div className="space-y-1.5">
+                  <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
+                    <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
+                    <input className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm" placeholder="WhatsApp number" inputMode="numeric" autoComplete="tel-national" maxLength={10}
+                      value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))} />
+                  </div>
+                  <p className="text-xs text-fk-muted">Your final bill is sent to this WhatsApp number after the table is closed.</p>
+                </div>
+              )}
               {orderType === 'delivery' && (
                 <>
-                  {account.loggedIn && (account.addresses ?? []).length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {account.addresses!.map((a) => (
-                        <button key={a.id} type="button" onClick={() => setAddress(a.address)}
-                          className={`max-w-full truncate rounded-full border px-3 py-1.5 text-xs font-semibold ${address === a.address ? 'border-fk-red bg-fk-red/10 text-fk-red' : 'border-fk-line'}`}>
-                          {a.label || a.address.slice(0, 28)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <textarea
-                    className={`${input} resize-none`}
-                    rows={3}
-                    placeholder="Delivery address with landmark"
-                    autoComplete="street-address"
-                    value={address}
-                    onChange={(e) => setAddress(e.target.value)}
-                  />
+                  <p className="text-xs font-bold uppercase tracking-wide text-fk-muted">Deliver to</p>
+                  {addressCards.map((c) => {
+                    const selected = !!addr && addr.text === c.text && addr.pincode === c.pincode
+                    const blocked = !!c.pincode && !!rules?.pincodes.length && !rules.pincodes.some((p) => p.pincode === c.pincode)
+                    return (
+                      <div key={c.key} role="button" tabIndex={0}
+                        onClick={() => { if (!c.pincode) { setAddrDraft(c); setAddrOpen(true) } else setAddr({ label: c.label, text: c.text, pincode: c.pincode }) }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') (e.currentTarget as HTMLElement).click() }}
+                        className={`flex cursor-pointer items-start gap-3 rounded-2xl border-2 p-3.5 transition ${selected ? 'border-green-600 bg-green-50/40' : 'border-fk-line bg-white'} ${blocked ? 'opacity-60' : ''}`}>
+                        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-fk-tint text-fk-red">{c.label === 'Home' ? <Home className="h-4 w-4" /> : c.label === 'Work' ? <Store className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-extrabold">{c.label || 'Address'}{selected && <Check className="ml-1.5 inline h-4 w-4 text-green-600" strokeWidth={3} />}</span>
+                          <span className="mt-0.5 block text-[13px] leading-snug text-fk-muted">{c.text}{c.pincode ? ` - ${c.pincode}` : ''}</span>
+                          {blocked && <span className="mt-1 block text-xs font-semibold text-red-600">We do not deliver to this pincode yet</span>}
+                          {!c.pincode && <span className="mt-1 block text-xs font-semibold text-amber-700">Tap to add the pincode</span>}
+                        </span>
+                        {selected && <button type="button" onClick={(e) => { e.stopPropagation(); setAddrDraft(c); setAddrOpen(true) }} className="shrink-0 text-xs font-bold text-fk-red">Edit</button>}
+                      </div>
+                    )
+                  })}
+                  <button type="button" onClick={() => { setAddrDraft(null); setAddrOpen(true) }}
+                    className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#ffc9ce] p-3.5 text-sm font-bold text-fk-red transition hover:bg-fk-tint">
+                    <Plus className="h-4 w-4" strokeWidth={3} /> {addressCards.length ? 'Add a new address' : 'Add delivery address'}
+                  </button>
                   {account.loggedIn && (
                     <label className="flex items-center gap-2 text-sm text-fk-muted">
                       <input type="checkbox" checked={saveAddr} onChange={(e) => setSaveAddr(e.target.checked)} /> Save this address to my profile
@@ -491,15 +614,6 @@ export default function CustomerPage() {
                 </>
               )}
             </div>
-          </Card>
-
-          <Card title="Payment">
-            <div className="grid grid-cols-1 gap-2">
-              <Choice active>Cash</Choice>
-            </div>
-            <p className="mt-2.5 text-xs text-fk-muted">
-              You pay at {orderType === 'pickup' ? 'the counter' : 'the door'}. Nothing is charged online.
-            </p>
           </Card>
 
           <Card title="Notes for the kitchen (optional)">
@@ -518,7 +632,10 @@ export default function CustomerPage() {
                 </li>
               ))}
             </ul>
-            <TotalsBlock {...totals} />
+            <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} />
+            {offerPaise > 0 && cart.length > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mt-3" />}
+            {minOrderShort > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-800">Add {formatPrice(minOrderShort)} more to reach the minimum delivery order.</p>}
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-fk-muted"><span aria-hidden>💵</span> Pay by cash {orderType === 'delivery' ? 'on delivery' : orderType === 'dine-in' ? 'at the counter' : 'at the counter'}. Nothing is charged online.</p>
           </Card>
 
           {formError && (
@@ -529,12 +646,18 @@ export default function CustomerPage() {
 
           <button
             onClick={placeOrder}
-            disabled={submitting || cart.length === 0}
+            disabled={submitting || cart.length === 0 || minOrderShort > 0}
             className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-fk-red py-4 text-base font-bold text-white shadow-md shadow-red-500/20 transition hover:bg-fk-red-dark disabled:opacity-60"
           >
-            {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Placing order</>) : (<>Place order · {formatPrice(totals.totalPaise)}</>)}
+            {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Placing order</>) : (<>{orderType === 'dine-in' ? 'Send to kitchen' : 'Place order'} · {formatPrice(grandTotalPaise)}</>)}
           </button>
         </div>
+        <AnimatePresence>
+          {addrOpen && (
+            <AddressSheet rules={rules} initial={addrDraft} onClose={() => setAddrOpen(false)}
+              onSave={(a) => { setAddr(a); setAddrOpen(false); setFormError(null) }} />
+          )}
+        </AnimatePresence>
       </main>
     )
   }
@@ -586,6 +709,18 @@ export default function CustomerPage() {
                 <p className="mt-1 flex items-center gap-1 text-[13px] text-white/85">
                   <Clock className="h-3.5 w-3.5 shrink-0" /> {formatTime(branch.opensAt)} to {formatTime(branch.closesAt)}
                 </p>
+              )}
+              {tableNo !== null ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-white/20 px-3 py-1 text-xs font-bold">Dine-in · Table {tableNo}</span>
+                  {tableInfo?.open && tableInfo.rounds.length > 0 && (
+                    <button onClick={() => setScreen('table')} className="rounded-full bg-fk-yellow px-3 py-1 text-xs font-extrabold text-fk-ink">My orders ({tableInfo.rounds.length})</button>
+                  )}
+                </div>
+              ) : orderChosen && (
+                <button onClick={() => setOrderChosen(false)} className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/20 px-3 py-1 text-xs font-bold">
+                  {orderType === 'delivery' ? <Bike className="h-3.5 w-3.5" /> : <Store className="h-3.5 w-3.5" />} {orderType === 'delivery' ? 'Delivery' : 'Takeaway'} · Change
+                </button>
               )}
               {!ONLY_BRANCH && (
                 <button onClick={changeBranch} className="mt-1.5 text-[13px] font-semibold text-fk-yellow underline-offset-2 hover:underline">
@@ -725,7 +860,7 @@ export default function CustomerPage() {
           onClick={() => setCategoryMenuOpen(true)}
           aria-label="Browse categories"
           className={`fixed right-[max(1rem,calc(50vw-384px+1rem))] z-40 flex h-14 w-14 flex-col items-center justify-center rounded-full border border-white/10 bg-fk-ink text-white shadow-2xl shadow-black/40 transition-all active:scale-95 ${
-            cartCount > 0 ? 'bottom-[100px]' : 'bottom-6'
+            cartCount > 0 ? (offerPaise > 0 ? 'bottom-[158px]' : 'bottom-[100px]') : 'bottom-6'
           }`}
         >
           <Utensils className="mb-0.5 h-[17px] w-[17px] opacity-90" strokeWidth={2.2} />
@@ -743,6 +878,7 @@ export default function CustomerPage() {
           >
             <div className="fk-checker-sm" />
             <div className="px-4 pb-4 pt-3">
+              {offerPaise > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mb-2" />}
               <button
                 onClick={() => setCartOpen(true)}
                 className="flex h-[52px] w-full items-center justify-between rounded-[14px] bg-fk-red px-4 text-white shadow-md shadow-red-500/25 transition-transform active:scale-[0.98]"
@@ -843,7 +979,8 @@ export default function CustomerPage() {
                 ))}
               </ul>
               <div className="px-5 pb-5 pt-1">
-                <TotalsBlock {...totals} />
+                {offerPaise > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mb-1" />}
+                <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} />
                 <button
                   onClick={goToCheckout}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-[14px] bg-fk-red py-4 font-bold text-white transition hover:bg-fk-red-dark"
@@ -855,6 +992,13 @@ export default function CustomerPage() {
           </>
         )}
       </AnimatePresence>
+      {!loading && !loadError && !orderChosen && screen === 'menu' && (
+        <OrderTypeWelcome
+          branchName={shortName(branch?.name)} rules={rules}
+          onPick={(t) => { setOrderType(t); setOrderChosen(true) }}
+        />
+      )}
+      {celebrate && <Celebration onDone={() => setCelebrate(false)} />}
       {accountOpen && <AccountPanel account={account} onClose={() => setAccountOpen(false)} onChanged={loadAccount} />}
     </div>
   )
@@ -1095,13 +1239,65 @@ function QtyControl({ qty, name, onChange }: { qty: number; name: string; onChan
   )
 }
 
-function TotalsBlock({ subtotalPaise, gstPaise, totalPaise }: { subtotalPaise: number; gstPaise: number; totalPaise: number }) {
+function TotalsBlock({ subtotalPaise, gstPaise, totalPaise, deliveryFeePaise = 0, baseFeePaise = 0 }: {
+  subtotalPaise: number; gstPaise: number; totalPaise: number; deliveryFeePaise?: number; baseFeePaise?: number
+}) {
   return (
     <dl className="mt-3 space-y-1.5 border-t border-dashed border-fk-line pt-3 text-sm">
       <div className="flex justify-between"><dt className="text-fk-muted">Subtotal</dt><dd>{formatPrice(subtotalPaise)}</dd></div>
       <div className="flex justify-between"><dt className="text-fk-muted">GST (5%)</dt><dd>{formatPrice(gstPaise)}</dd></div>
+      {baseFeePaise > 0 && (
+        <div className="flex justify-between">
+          <dt className="text-fk-muted">Delivery fee</dt>
+          <dd>{deliveryFeePaise === 0
+            ? <><s className="mr-1.5 text-fk-muted">{formatPrice(baseFeePaise)}</s><span className="font-bold text-green-600">FREE</span></>
+            : formatPrice(deliveryFeePaise)}</dd>
+        </div>
+      )}
       <div className="flex justify-between pt-1 text-base font-extrabold"><dt>Total</dt><dd className="text-fk-red">{formatPrice(totalPaise)}</dd></div>
     </dl>
+  )
+}
+
+/** Shown once when the menu opens: delivery or takeaway. */
+function OrderTypeWelcome({ branchName, rules, onPick }: { branchName: string; rules: DeliveryRules | null; onPick: (t: 'pickup' | 'delivery') => void }) {
+  const canDeliver = !rules || rules.delivery
+  const canPickup = !rules || rules.pickup
+  // A branch that offers only one way needs no question.
+  useEffect(() => {
+    if (rules && rules.delivery !== rules.pickup) onPick(rules.delivery ? 'delivery' : 'pickup')
+  }, [rules, onPick])
+  const offer = rules && rules.freeAbovePaise > 0 ? `Free delivery above ${formatPrice(rules.freeAbovePaise)}` : rules && rules.feePaise > 0 ? `Delivery fee ${formatPrice(rules.feePaise)}` : 'Hot at your door'
+  return (
+    <motion.div className="fixed inset-0 z-[55] flex items-end justify-center bg-black/65 sm:items-center sm:p-5" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div role="dialog" aria-modal="true" aria-label="How would you like your order?"
+        initial={{ y: 60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ type: 'spring', damping: 26, stiffness: 300 }}
+        className="w-full max-w-md overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:rounded-3xl">
+        <div className="bg-fk-red px-6 pb-5 pt-7 text-center text-white">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/logo-white.png" alt="Fried King" className="mx-auto h-16 w-auto" />
+          <p className="mt-3 font-display text-2xl font-extrabold uppercase leading-tight">How would you like your order?</p>
+          <p className="mt-1 text-sm text-white/85">Fried King · {branchName}</p>
+        </div>
+        <div className="fk-checker" />
+        <div className="grid gap-3 p-5">
+          {canDeliver && (
+            <button onClick={() => onPick('delivery')} className="group flex items-center gap-4 rounded-2xl border border-fk-line p-4 text-left transition hover:border-fk-red hover:shadow-md">
+              <span className="rounded-2xl bg-fk-tint p-3.5 text-fk-red transition group-hover:bg-fk-red group-hover:text-white"><Bike className="h-6 w-6" /></span>
+              <span className="flex-1"><span className="block text-[17px] font-extrabold">Delivery</span><span className="block text-[13px] text-fk-muted">{offer}</span></span>
+              <ChevronRight className="h-5 w-5 text-fk-line group-hover:text-fk-red" />
+            </button>
+          )}
+          {canPickup && (
+            <button onClick={() => onPick('pickup')} className="group flex items-center gap-4 rounded-2xl border border-fk-line p-4 text-left transition hover:border-fk-red hover:shadow-md">
+              <span className="rounded-2xl bg-fk-tint p-3.5 text-fk-red transition group-hover:bg-fk-red group-hover:text-white"><Store className="h-6 w-6" /></span>
+              <span className="flex-1"><span className="block text-[17px] font-extrabold">Takeaway</span><span className="block text-[13px] text-fk-muted">Pick it up at the branch</span></span>
+              <ChevronRight className="h-5 w-5 text-fk-line group-hover:text-fk-red" />
+            </button>
+          )}
+        </div>
+      </motion.div>
+    </motion.div>
   )
 }
 
@@ -1111,21 +1307,6 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       <h2 className="mb-3 font-display text-lg font-bold uppercase leading-none tracking-wide">{title}</h2>
       {children}
     </section>
-  )
-}
-
-function Choice({ active, onClick, children }: { active: boolean; onClick?: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex items-center justify-center gap-2 rounded-xl border py-3 text-sm font-bold transition ${
-        active ? 'border-fk-red bg-fk-tint text-fk-red ring-1 ring-fk-red' : 'border-fk-line bg-white text-fk-muted hover:text-fk-ink'
-      }`}
-    >
-      {children}
-    </button>
   )
 }
 

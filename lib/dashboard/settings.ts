@@ -8,6 +8,8 @@ export const SETTING_DEFAULTS = {
   order_types: 'Delivery, Pickup, Dine-in',
   min_order: '0',
   delivery_fee: '0',
+  free_delivery_enabled: 'false',
+  free_delivery_above: '0',
   delivery_note: '',
   payment_methods: 'Cash or UPI at the counter or on delivery.',
   auto_print: 'false',
