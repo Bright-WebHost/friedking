@@ -4,6 +4,7 @@ import { HANDLERS, type Body } from '@/lib/dashboard/handlers'
 import { HttpError, resolveCtx } from '@/lib/dashboard/server'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 30
 
 function fail(error: unknown) {
   if (error instanceof HttpError) return NextResponse.json({ message: error.message }, { status: error.status })

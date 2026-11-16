@@ -210,6 +210,8 @@ begin
       'phone', coalesce(b.phone, case when v_set ? 'whatsapp_number' then '+91 ' || (v_set->>'whatsapp_number') end, ''),
       'hours', case when b.opens_at is not null and b.closes_at is not null
                     then to_char(b.opens_at, 'FMHH12:MI AM') || ' to ' || to_char(b.closes_at, 'FMHH12:MI AM') else '' end,
+      -- the branch's real opening hours (Dashboard > Settings > Hours); the bot checks them in IST
+      'opens_at', to_char(b.opens_at, 'HH24:MI'), 'closes_at', to_char(b.closes_at, 'HH24:MI'),
       'cuisines', 'Fried chicken, burgers, wraps, sandwiches and sides',
       'delivery_time', '30 to 40 minutes',
       'menu_url', 'https://friedking.vercel.app/')
@@ -467,9 +469,22 @@ begin
       from orders o where o.id = v_id);
 end $$;
 
--- Riders do not have a WhatsApp "Payment collected" button yet; answers "not found" until they do.
+-- The rider tapped "Payment collected" on the dispatch message: mark the order's cash as collected.
+-- p_message_id is the id of the message the rider replied to (stored when the dispatch was sent).
 create or replace function public.rider_confirm_payment(p_message_id text)
-returns jsonb language sql stable as $$ select jsonb_build_object('result', 'not_found') $$;
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare o orders%rowtype;
+begin
+  if coalesce(p_message_id, '') = '' then return jsonb_build_object('result', 'not_found'); end if;
+  select * into o from orders where rider_wa_message_id = p_message_id order by created_at desc limit 1 for update;
+  if not found then return jsonb_build_object('result', 'not_found'); end if;
+  if o.cash_collected then return jsonb_build_object('result', 'already', 'order', public.fk_wa_order_json(o.id)); end if;
+  update orders set cash_collected = true, cash_amount_paise = o.total_paise, cash_collected_at = now(), payment_taken_by = 'Rider (WhatsApp)'
+   where id = o.id;
+  insert into order_audit (branch_id, order_id, order_number, action, to_value, detail, staff)
+    values (o.branch_id, o.id, o.order_number, 'payment', o.total_paise::text, 'rider confirmed payment collected on WhatsApp', 'Rider (WhatsApp)');
+  return jsonb_build_object('result', 'collected', 'order', public.fk_wa_order_json(o.id));
+end $$;
 
 -- ---------- access: the workflow uses the service key only ----------
 revoke all on function public.chat_context(text, text, text, text) from public, anon, authenticated;

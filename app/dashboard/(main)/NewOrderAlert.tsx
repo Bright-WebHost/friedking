@@ -21,7 +21,7 @@ export default function NewOrderAlert({ onNew, sirenBeat }: { onNew: (o: DOrder)
   const poll = useCallback(async () => {
     if (document.hidden) return
     try {
-      const { orders } = await api.get<{ orders: DOrder[] }>('orders', { since: new Date(Date.now() - 48 * 3600000).toISOString(), limit: 300 })
+      const { orders } = await api.get<{ orders: DOrder[] }>('orders', { pending: 1 })
       const pending = orders.filter((o) => o.status === 'pending').sort((a, b) => a.created_at.localeCompare(b.created_at))
       const first = seen.current === null
       seen.current ??= new Set()
@@ -96,8 +96,8 @@ export default function NewOrderAlert({ onNew, sirenBeat }: { onNew: (o: DOrder)
           {o.table_number && <div className="aline"><span>Table</span><b>{o.table_number}</b></div>}
           {o.delivery_address && <div className="aline"><span>📍</span><b style={{ textAlign: 'right' }}>{o.delivery_address}{o.delivery_pincode ? ` — ${o.delivery_pincode}` : ''}</b></div>}
           <div className="aitems">
-            {o.items.map((l) => <div key={l.id}>{l.quantity} × {l.name_snapshot}{l.notes ? <small style={{ color: 'var(--muted)' }}> · {l.notes}</small> : null}</div>)}
-            {o.special_instructions && <div style={{ marginTop: 6, color: 'var(--muted)', fontSize: 13 }}>Note: {o.special_instructions}</div>}
+            {o.items.map((l) => <div key={l.id}>{l.quantity} × {l.name_snapshot}{l.notes ? <div className="linote">📝 NOTE: {l.notes}</div> : null}</div>)}
+            {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
           </div>
           <div className="aline"><span>Payment</span><b>{o.payment_method === 'upi' ? 'UPI' : 'Cash'} {o.order_type === 'delivery' ? 'on delivery' : 'at counter'}</b></div>
           <div className="aline" style={{ alignItems: 'flex-end' }}><span>Total</span><span className="atot">{rs(o.total_paise)}</span></div>

@@ -61,7 +61,7 @@ export default function Orders() {
           <div className="oamt">{rs(o.total_paise)}</div>
         </div>
         <div className="oitems"><LineItems o={o} /></div>
-        {o.special_instructions && <div className="addr">📝 {o.special_instructions}</div>}
+        {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
         {o.delivery_address && <div className="addr">📍 {o.delivery_address}{o.delivery_pincode ? ` — ${o.delivery_pincode}` : ''}</div>}
         <div className="tags">
           <TypeTag o={o} /><span className="tag">{o.source}</span>
@@ -189,7 +189,9 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
             <div className="morow"><b>#{o.order_number}</b><span>{ist(o.created_at)} · <Age o={o} /></span></div>
             <div className="osub">{o.order_type === 'dine-in' ? `Table ${o.table_number ?? '?'}` : customerName(o)}{o.customer?.phone ? ` · ${phoneShort(o.customer.phone)}` : ''}</div>
             {o.delivery_address && <div className="osub">📍 {o.delivery_address}</div>}
-            <div className="oitems">{o.items.map((l) => `${l.quantity} × ${l.name_snapshot}${l.notes ? ` (${l.notes})` : ''}`).join(', ')}</div>
+            <div className="oitems">{o.items.map((l) => `${l.quantity} × ${l.name_snapshot}`).join(', ')}</div>
+            {o.items.filter((l) => l.notes).map((l) => <div key={l.id} className="linote">📝 {l.name_snapshot}: {l.notes}</div>)}
+            {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
             <div className="moamt">{rs(o.total_paise)} · <span style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'capitalize' }}>{statusLabel(o)}</span></div>
             <div className="moacts">
               {o.status === 'pending' && <>

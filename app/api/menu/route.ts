@@ -82,5 +82,6 @@ export async function GET(req: NextRequest) {
     .filter((c) => used.has(c.id))
     .map((c) => ({ id: c.id, name: c.name }))
 
-  return NextResponse.json({ branch, categories, items }, { headers: noStore })
+  // Same for every customer: cached at the edge for 30 s (then refreshed in the background), so most visits never touch the database.
+  return NextResponse.json({ branch, categories, items }, { headers: { 'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=300' } })
 }

@@ -13,6 +13,7 @@ import { blastHandler } from './blast'
 import { chatHandler } from './chat'
 import { settingsHandler } from './settings'
 import { metaHandler } from './meta'
+import { aiHandler } from './ai'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Body = Record<string, any>
@@ -27,6 +28,7 @@ export interface Handler {
 
 export const HANDLERS: Record<string, Handler> = {
   meta: metaHandler,
+  ai: aiHandler,
   orders: ordersHandler,
   pos: posHandler,
   tables: tablesHandler,

@@ -91,21 +91,18 @@ export default function CustomerPage() {
     setLoadError(null)
     setScreen('menu')
     try {
-      const res = await fetch(`/api/menu?branch=${encodeURIComponent(slug)}`, { cache: 'no-store' })
+      // Start the offers request together with the menu; it must not hold the menu back.
+      const offersRequest = fetch(`/api/promotions?branch=${encodeURIComponent(slug)}`)
+        .then(async (r) => { const d = await readJson(r); if (!r.ok) throw new Error(d.message ?? 'Unable to load offers'); return d })
+        .then((d) => setPromotions(Array.isArray(d.promotions) ? d.promotions : []))
+        .catch((error) => { console.error('[CustomerPage] offers:', error instanceof Error ? error.message : error); setPromotions([]) })
+      const res = await fetch(`/api/menu?branch=${encodeURIComponent(slug)}`)
       const data = await readJson(res)
       if (!res.ok) throw new Error(data.message ?? 'Unable to load menu')
       setBranch(data.branch)
       setCategories(data.categories)
       setItems(data.items)
-      try {
-        const promotionsResponse = await fetch(`/api/promotions?branch=${encodeURIComponent(slug)}`, { cache: 'no-store' })
-        const promotionsData = await readJson(promotionsResponse)
-        if (!promotionsResponse.ok) throw new Error(promotionsData.message ?? 'Unable to load offers')
-        setPromotions(Array.isArray(promotionsData.promotions) ? promotionsData.promotions : [])
-      } catch (error) {
-        console.error('[CustomerPage] offers:', error instanceof Error ? error.message : error)
-        setPromotions([])
-      }
+      void offersRequest
 
       // Restore a saved cart, dropping anything no longer on the menu and refreshing prices.
       let restored: CartItem[] = []

@@ -22,7 +22,7 @@ export function LineItems({ o }: { o: DOrder }) {
       {o.items.map((l) => (
         <div key={l.id}>
           <div className="li"><span>{l.name_snapshot} ×{l.quantity}</span><span>{rs(l.line_total_paise)}</span></div>
-          {l.notes && <div className="linote">{l.notes}</div>}
+          {l.notes && <div className="linote">📝 NOTE: {l.notes}</div>}
         </div>
       ))}
     </>
@@ -163,7 +163,7 @@ function OrderDetails({ o, rounds, onClose }: { o: DOrder; rounds?: DOrder[]; on
       <div className="osub" style={{ marginBottom: 10 }}>{ist(o.created_at)}{o.taken_by ? ` · Order by ${o.taken_by}` : ''}{o.accepted_by ? ` · Accepted by ${o.accepted_by}` : ''}</div>
       {o.delivery_address && <div className="addr" style={{ marginBottom: 10 }}>📍 {o.delivery_address}{o.delivery_pincode ? ` — ${o.delivery_pincode}` : ''}</div>}
       <div className="oitems" style={{ marginBottom: 10 }}><LineItems o={o} /></div>
-      {o.special_instructions && <div className="note">Note: {o.special_instructions}</div>}
+      {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
       <div className="li"><span>Subtotal</span><span>{rs(o.subtotal_paise)}</span></div>
       <div className="li"><span>GST</span><span>{rs(o.gst_paise)}</span></div>
       {o.discount_paise > 0 && <div className="li"><span>Discount{o.discount_reason ? ` (${o.discount_reason})` : ''}</span><span>−{rs(o.discount_paise)}</span></div>}

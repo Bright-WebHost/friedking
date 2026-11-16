@@ -27,16 +27,37 @@ async function font(file: string, origin: string): Promise<ArrayBuffer> {
  */
 export async function GET(request: NextRequest) {
   const id = request.nextUrl.searchParams.get('order') ?? ''
-  if (!UUID.test(id)) return new Response('Order id is required', { status: 400 })
+  const sessionId = request.nextUrl.searchParams.get('session') ?? ''
+  const isTable = UUID.test(sessionId)
+  if (!isTable && !UUID.test(id)) return new Response('Order id is required', { status: 400 })
 
   try {
     const admin = createAdminClient()
-    const { data: order, error } = await admin
-      .from('orders')
-      .select('order_number, status, order_type, payment_method, subtotal_paise, gst_paise, total_paise, discount_paise, loyalty_discount_paise, delivery_address, table_number, special_instructions, created_at, cash_collected, branch_id, customer:customers(name, phone), items:order_items(name_snapshot, quantity, line_total_paise, line_no, notes)')
-      .eq('id', id)
-      .maybeSingle()
-    if (error || !order || order.status === 'draft') return new Response('Order not found', { status: 404 })
+    const SELECT = 'order_number, status, order_type, payment_method, subtotal_paise, gst_paise, total_paise, discount_paise, loyalty_discount_paise, delivery_address, table_number, special_instructions, created_at, cash_collected, branch_id, customer:customers(name, phone), items:order_items(name_snapshot, quantity, line_total_paise, line_no, notes)'
+    let order
+    if (isTable) {
+      // One bill for the whole table: every round that was not cancelled, items merged by dish.
+      const { data: rounds } = await admin.from('orders').select(SELECT).eq('table_session_id', sessionId)
+        .in('status', ['pending', 'confirmed', 'preparing', 'ready', 'delivered']).order('created_at')
+      if (!rounds?.length) return new Response('Table not found', { status: 404 })
+      const merged = new Map<string, { name_snapshot: string; quantity: number; line_total_paise: number; line_no: number; notes: string | null }>()
+      for (const r of rounds) for (const it of r.items ?? []) {
+        const m = merged.get(it.name_snapshot)
+        if (m) { m.quantity += it.quantity; m.line_total_paise += it.line_total_paise; m.notes = [m.notes, it.notes].filter(Boolean).join('; ') || null }
+        else merged.set(it.name_snapshot, { name_snapshot: it.name_snapshot, quantity: it.quantity, line_total_paise: it.line_total_paise, line_no: merged.size, notes: it.notes })
+      }
+      const sum = (k: 'subtotal_paise' | 'gst_paise' | 'total_paise' | 'discount_paise' | 'loyalty_discount_paise') => rounds.reduce((t, r) => t + (r[k] ?? 0), 0)
+      const first = rounds[0]
+      order = { ...first, status: 'delivered', order_type: 'dine-in', cash_collected: true, delivery_address: null,
+        special_instructions: rounds.map((r) => r.special_instructions).filter(Boolean).join('; ') || null,
+        created_at: new Date().toISOString(), items: [...merged.values()],
+        subtotal_paise: sum('subtotal_paise'), gst_paise: sum('gst_paise'), total_paise: sum('total_paise'),
+        discount_paise: sum('discount_paise'), loyalty_discount_paise: sum('loyalty_discount_paise') }
+    } else {
+      const { data, error } = await admin.from('orders').select(SELECT).eq('id', id).maybeSingle()
+      if (error || !data || data.status === 'draft') return new Response('Order not found', { status: 404 })
+      order = data
+    }
 
     const [{ data: branch }, { data: rows }] = await Promise.all([
       admin.from('branches').select('name, address, phone').eq('id', order.branch_id).maybeSingle(),
@@ -97,7 +118,7 @@ export async function GET(request: NextRequest) {
           {checker(false)}
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '46px 48px 0' }}>
-            <span style={{ fontSize: 72, fontWeight: 700, color: '#1c1c1c', letterSpacing: 6 }}>FK-{order.order_number}</span>
+            <span style={{ fontSize: 72, fontWeight: 700, color: '#1c1c1c', letterSpacing: 6 }}>{isTable ? `TABLE ${order.table_number ?? ''}` : `FK-${order.order_number}`}</span>
             <span style={{ fontSize: 28, color: '#8a8a8a', marginTop: 8 }}>{when}</span>
             <div style={{ display: 'flex', marginTop: 30, color: RED, fontSize: 30, fontWeight: 700, letterSpacing: 2, padding: '14px 44px', borderRadius: 999, border: `5px solid ${RED}` }}>
               {typeLabel} · {payLabel}

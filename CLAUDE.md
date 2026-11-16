@@ -102,11 +102,18 @@ Decisions (Maithri, 2026-11-14):
 
 **Live Chat replies:** staff replies are saved as outbound `chat_messages` with `delivery_status = pending`; n8n `Fried King | Chat Replies` (every 5 s, `claim_chat_replies` / `complete_chat_reply`) sends them within the 24-hour window, otherwise marks them failed.
 
+**Messages a customer gets (same order as Rasoi):** ONE message per order: the receipt image with a short caption, sent when staff accept it. Ready / out for delivery / delivered are never sent. Cancelled orders get a short text. Dine-in: nothing until the table is closed, then one receipt for the whole table (`/api/receipt?session=<uuid>`). The bot itself sends no "order confirmed" text. Outside the 24-hour window the receipt goes as the approved templates `friedking_order_receipt` / `friedking_table_bill` (image header); riders always get the template `friedking_rider_msg` (6 body params + quick-reply button "Payment collected"); the tap runs `rider_confirm_payment`, matched on `orders.rider_wa_message_id`.
+
+**Dashboard AI Assistant:** page `/dashboard/<branch>/ai` -> handler `ai.ts` builds a read-only data snapshot -> n8n workflow `Fried King | Dashboard AI` (webhook URL stored in `branch_settings.ai_webhook_url`) -> OpenAI `gpt-4.1-mini` via the n8n credential `Fried King | OpenAI` (same as the bot). Needs a real OpenAI key in that credential.
+
+**Hosting:** `vercel.json` pins functions to `sin1` (Singapore, next to Supabase). Without it Vercel ran them in the US and every request took about 2 s. `/api/menu` and `/api/promotions` are cached at the CDN for 30-60 s.
+
+**Bot opening hours** come from the branch (`branches.opens_at/closes_at`, edited in Dashboard > Settings > Hours), not hard-coded.
+
 **Order notifier** (n8n `Fried King | Order Events`, polls every 10 s): `supabase/friedking_order_notifier.sql` gives `claim_order_events` / `complete_order_event`. It sends `order_status_changed` events to the customer on WhatsApp: accepted = receipt image drawn by the app itself (`GET /api/receipt?order=<order uuid>`, next/og, same approach as Rasoi; no HCTI) or itemised text if that fails, then ready / delivered / cancelled texts. Only inside the 24-hour reply window; events older than 30 minutes are dropped. n8n talks to Supabase through the credential `Fried King | Supabase (service role)` (type supabaseApi; a single-header credential does not work because Supabase needs both `apikey` and `Authorization`). (`Fried King | Main` still uses HCTI for its amended-order invoice picture.)
 
 Not done yet:
 - Bot: table QR scans ("Hi, I'm at Table 3") call `open_table_session`; a customer with an open table gets their WhatsApp orders attached to it as dine-in. The old `Dine-In & Dispatch`, `Table Close`, `Rider Dispatch`, `Send Invoice` and `PWA Order Receiver` workflows are still Oceana copies with a placeholder database and stay inactive. The old `Fried King | Status Notifier` is superseded by `Order Events` and stays inactive. Rider "Payment collected" button is a stub. The Route node's opening hours are hard-coded 7:00 to 23:30, not the branch hours.
-- AI Assistant.
 - Customer checkout does not yet use the dashboard's minimum order, delivery fee, pincodes or order-type settings (client rules unknown).
 - No phone verification at checkout (OTP functions exist, not called). No item variants UI.
 - n8n workflows and the YCloud connection (pending on the client and another developer).

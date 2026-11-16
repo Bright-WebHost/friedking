@@ -132,6 +132,11 @@ export const ordersHandler: Handler = {
       const items = check(await ctx.admin.from('menu_items').select('id, name, price_paise, is_active, category_id').eq('branch_id', ctx.branch.id).order('sort_order'), 'load the menu') ?? []
       return { items }
     }
+    // Light query for the new-order popup: only orders waiting to be accepted.
+    if (params.get('pending') === '1') {
+      const rows = check(await ctx.admin.from('orders').select(ORDER_SELECT).eq('branch_id', ctx.branch.id).eq('status', 'pending').order('created_at').limit(50), 'load new orders') ?? []
+      return { orders: rows, serverTime: new Date().toISOString() }
+    }
     const since = params.get('since')
     const until = params.get('until')
     const limit = Math.min(2000, Number(params.get('limit')) || 1500)

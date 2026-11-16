@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       .or(`ends_at.is.null,ends_at.gte.${today}`)
       .order('created_at', { ascending: false })
     if (error) throw error
-    return NextResponse.json({ promotions: data ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
+    return NextResponse.json({ promotions: data ?? [] }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } })
   } catch (error) {
     console.error('[GET /api/promotions]', error instanceof Error ? error.message : error)
     return NextResponse.json({ message: 'Unable to load offers' }, { status: 500 })
