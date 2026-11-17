@@ -1,5 +1,5 @@
 import { SETTING_KEYS } from '@/lib/dashboard/settings'
-import { audit, check, clearBranchCache, getSettings, HttpError, id, optStr, str, uploadImage } from '@/lib/dashboard/server'
+import { audit, check, clearBranchCache, getSettings, HttpError, id, int, needRole, optStr, str, uploadImage } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
 const ROLES = ['owner', 'manager', 'staff']
@@ -43,10 +43,26 @@ export const settingsHandler: Handler = {
       if (b.closesAt !== undefined) branchUpdate.closes_at = time(b.closesAt) ?? ctx.branch.closes_at
       if (Object.keys(branchUpdate).length) { check(await ctx.admin.from('branches').update(branchUpdate).eq('id', ctx.branch.id), 'save the branch'); clearBranchCache() }
 
-      const rows = SETTING_KEYS.filter((k) => b.settings && k in b.settings).map((key) => ({
+      const rows = SETTING_KEYS.filter((k) => k !== 'blast_monthly_limit' && b.settings && k in b.settings).map((key) => ({
         branch_id: ctx.branch.id, key, value: str(b.settings[key], 1000), updated_at: new Date().toISOString(),
       }))
       if (rows.length) check(await ctx.admin.from('branch_settings').upsert(rows, { onConflict: 'branch_id,key' }), 'save settings')
+      if (b.settings && 'blast_monthly_limit' in b.settings) {
+        needRole(ctx, 'owner')
+        const next = int(b.settings.blast_monthly_limit, 'monthly blast limit', 0, 1000000)
+        const current = (await getSettings(ctx)).blast_monthly_limit
+        if (String(next) !== current) {
+          check(await ctx.admin.from('branch_settings').upsert({
+            branch_id: ctx.branch.id, key: 'blast_monthly_limit', value: String(next), updated_at: new Date().toISOString(),
+          }, { onConflict: 'branch_id,key' }), 'save the monthly blast limit')
+          await audit(ctx, {
+            action: 'blast_limit_update',
+            from: current,
+            to: String(next),
+            detail: `Monthly blast limit changed by ${ctx.staff.name}`,
+          })
+        }
+      }
       await audit(ctx, { action: 'settings_update', detail: `by ${ctx.staff.name}` })
       return { ok: true }
     },

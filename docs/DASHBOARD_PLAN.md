@@ -122,7 +122,7 @@ All new schema is in `supabase/friedking_dashboard_oceana.sql` (run after the ph
 - [ ] Points are earned when an order is marked delivered
 
 ### Blast
-- [ ] Eligible / selected / sent-this-month with 1000/month cap bar and warnings
+- [x] Eligible / selected / sent-this-month with owner-controlled monthly cap bar, warnings, and audit logging
 - [ ] Audience (selection, everyone, ordered in 30 days, repeat), template name, header image (upload or URL, saved), send queues rows in `outbound_messages`
 
 ### Settings

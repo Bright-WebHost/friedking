@@ -21,11 +21,12 @@ export const SETTING_DEFAULTS = {
   google_review_url: '',
   blast_header_image: '',
   blast_template: 'friedking_promo_en',
+  blast_monthly_limit: '1000',
   whatsapp_number: '',
 }
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS
 export const SETTING_KEYS = Object.keys(SETTING_DEFAULTS) as SettingKey[]
 
-/** Monthly blast cap per branch (same as Oceana). */
-export const MONTHLY_BLAST_CAP = 1000
+/** Fallback for branches that have not saved the owner-controlled limit yet. */
+export const DEFAULT_MONTHLY_BLAST_LIMIT = 1000

@@ -1,5 +1,5 @@
-import { MONTHLY_BLAST_CAP } from '@/lib/dashboard/settings'
-import { audit, check, getSettings, HttpError, str, uploadImage, type Ctx } from '@/lib/dashboard/server'
+import { DEFAULT_MONTHLY_BLAST_LIMIT } from '@/lib/dashboard/settings'
+import { audit, check, getSettings, HttpError, int, str, uploadImage, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 import { loadCustomers } from './pos'
 
@@ -16,6 +16,11 @@ async function sentThisMonth(ctx: Ctx) {
   return count ?? 0
 }
 
+function monthlyLimit(value: string | undefined) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_MONTHLY_BLAST_LIMIT
+}
+
 async function saveSetting(ctx: Ctx, key: string, value: string) {
   check(await ctx.admin.from('branch_settings').upsert({ branch_id: ctx.branch.id, key, value, updated_at: new Date().toISOString() }, { onConflict: 'branch_id,key' }), 'save the setting')
 }
@@ -30,7 +35,7 @@ export const blastHandler: Handler = {
       ctx.admin.from('broadcast_campaigns').select('id, title, template_name, audience, status, recipient_count, created_by_name, created_at').eq('branch_id', ctx.branch.id).order('created_at', { ascending: false }).limit(10),
     ])
     return {
-      eligible: eligible.count ?? 0, sentThisMonth: sent, cap: MONTHLY_BLAST_CAP,
+      eligible: eligible.count ?? 0, sentThisMonth: sent, cap: monthlyLimit(settings.blast_monthly_limit),
       headerImage: settings.blast_header_image, template: settings.blast_template, campaigns: campaigns.data ?? [],
     }
   },
@@ -60,9 +65,11 @@ export const blastHandler: Handler = {
             : filter === 'repeat' ? c.total_orders > 1 : true)
       if (!recipients.length) throw new HttpError(400, 'Nobody matches that audience')
 
-      const remaining = Math.max(0, MONTHLY_BLAST_CAP - await sentThisMonth(ctx))
+      const settings = await getSettings(ctx)
+      const cap = monthlyLimit(settings.blast_monthly_limit)
+      const remaining = Math.max(0, cap - await sentThisMonth(ctx))
       if (recipients.length > remaining) {
-        throw new HttpError(409, `This would send to ${recipients.length} people, but only ${remaining} sends are left this month (cap ${MONTHLY_BLAST_CAP}).`)
+        throw new HttpError(409, `This would send to ${recipients.length} people, but only ${remaining} sends are left this month (cap ${cap}).`)
       }
 
       const campaign = check(await ctx.admin.from('broadcast_campaigns').insert({

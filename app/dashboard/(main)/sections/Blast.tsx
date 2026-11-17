@@ -25,7 +25,7 @@ export default function Blast() {
   const tpl = template ?? data.template
   const hdr = header ?? data.headerImage
   const remaining = Math.max(0, data.cap - data.sentThisMonth)
-  const capPct = Math.min(100, Math.round((data.sentThisMonth / data.cap) * 100))
+  const capPct = data.cap > 0 ? Math.min(100, Math.round((data.sentThisMonth / data.cap) * 100)) : 0
   const capClr = data.sentThisMonth >= data.cap ? '#c0392b' : data.sentThisMonth >= data.cap * 0.8 ? '#c9821a' : '#1f8a4c'
 
   const upload = async (f: File | undefined) => {
@@ -53,6 +53,7 @@ export default function Blast() {
         <div className="stat"><span>Eligible Contacts</span><b>{data.eligible}</b></div>
         <div className="stat r"><span>Selected</span><b>{phones.length}</b></div>
         <div className="stat"><span>Sent this month</span><b style={{ color: capClr }}>{data.sentThisMonth}/{data.cap}</b></div>
+        <div className="stat"><span>Remaining</span><b style={{ color: capClr }}>{remaining}</b></div>
       </div>
       <div style={{ height: 6, borderRadius: 4, background: '#eee', overflow: 'hidden', margin: '-6px 0 14px' }}><div style={{ height: '100%', width: `${capPct}%`, background: capClr }} /></div>
       {data.sentThisMonth >= data.cap ? <div className="err">⛔ Monthly blast cap reached ({data.cap}/{data.cap}). Sends resume on the 1st of next month.</div>

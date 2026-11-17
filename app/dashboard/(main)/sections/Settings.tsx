@@ -126,6 +126,11 @@ export default function Settings() {
           : <div className="none">No delivery pincodes added</div>}
       </div>
 
+      <div className="panel"><h3>Blast messages</h3>
+        {field('Monthly WhatsApp blast limit', <input className="f" type="number" min="0" max="1000000" inputMode="numeric" value={st.blast_monthly_limit} onChange={setSet('blast_monthly_limit')} />)}
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Owner-only setting. Failed messages do not count; the limit resets on the first day of each month. Changes are audit logged.</div>
+      </div>
+
       <div className="panel"><h3>Payment methods</h3><input className="f" value={st.payment_methods} onChange={setSet('payment_methods')} placeholder="e.g. Cash or UPI on delivery" /></div>
 
       <div className="panel"><h3>Printing &amp; security</h3>
