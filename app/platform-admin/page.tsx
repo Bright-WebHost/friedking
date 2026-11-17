@@ -36,10 +36,20 @@ export default function PlatformAdminPage() {
 
   const load = async () => {
     const response = await fetch('/api/platform-admin', { cache: 'no-store' })
-    if (response.ok) setData(await response.json() as AdminData)
+    if (response.ok) {
+      setData(await response.json() as AdminData)
+    } else if (response.status !== 403) {
+      const result = await response.json().catch(() => null) as { message?: string } | null
+      setError(result?.message || 'Could not load platform settings')
+    }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void (async () => {
+      const { data: session } = await createClient().auth.getSession()
+      if (session.session) await load()
+    })()
+  }, [])
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
