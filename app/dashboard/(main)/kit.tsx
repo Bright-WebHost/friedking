@@ -343,10 +343,17 @@ export function downloadCsv(name: string, rows: Array<Array<string | number | nu
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 const RECEIPT_CSS = `@page{size:80mm auto;margin:0}
-body{font-family:monospace;padding:3mm 4mm;font-size:13px;width:72mm;max-width:72mm;margin:0 auto}
-h2{text-align:center;margin:0 0 2px}.c{text-align:center}hr{border:0;border-top:1px dashed #999;margin:9px 0}
-.r{display:flex;justify-content:space-between;gap:8px}.t{font-weight:bold;font-size:15px}
-table{width:100%;border-collapse:collapse;font-size:12px}td,th{padding:3px 0;text-align:left}td:last-child,th:last-child{text-align:right}`
+body{font-family:Arial,sans-serif;padding:3mm 4mm;font-size:13px;width:72mm;max-width:72mm;margin:0 auto;color:#111}
+.bill,.kot{width:100%}.logo{display:block;width:52mm;height:auto;max-height:22mm;object-fit:contain;filter:grayscale(1) contrast(2);margin:0 auto 2mm}
+.brand{text-align:center;font-size:16px;font-weight:700;text-transform:none}.phone{text-align:center;font-size:13px;margin-top:2px}
+.line{border:0;border-top:1px solid #111;margin:7px 0}.dots{border:0;border-top:2px dotted #111;margin:8px 0}
+.r{display:flex;justify-content:space-between;gap:8px}.c{text-align:center}.b{font-weight:700}.t{font-weight:bold;font-size:15px}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:2px 8px}.meta .right{text-align:right}
+.items{width:100%;border-collapse:collapse;font-size:12px}.items td,.items th{padding:3px 0;text-align:left;vertical-align:top}.items td:nth-child(2),.items th:nth-child(2){text-align:center;width:10mm}.items td:nth-child(3),.items th:nth-child(3),.items td:last-child,.items th:last-child{text-align:right;white-space:nowrap}
+.desc{font-size:11px;font-style:italic;padding:0 0 3px 4mm!important}.note{font-size:11px;padding:0 0 3px 4mm!important}
+.totals{margin-left:auto;width:48mm}.grand{font-weight:700;font-size:16px;margin-top:5px}.thanks{text-align:center;margin-top:9px;font-weight:700}
+.kot{break-before:page;page-break-before:always}.kot h2{font-size:17px;text-align:center;margin:0 0 4px}.kot .items td:first-child{font-weight:700;font-size:14px}.kot .items td:nth-child(2){font-weight:700;font-size:14px}
+@media print{.kot{break-before:page;page-break-before:always}}`
 
 function printHtml(title: string, body: string) {
   const w = window.open('', '_blank', 'width=380,height=640')
@@ -356,35 +363,60 @@ function printHtml(title: string, body: string) {
   return true
 }
 
-export function printReceipt(o: DOrder, branch: DBranch, settings: Record<SettingKey, string>) {
+const plainRs = (paise: number) => (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const printType = (type: DOrder['order_type']) => type === 'delivery' ? 'Delivery' : type === 'dine-in' ? 'Dine In' : 'Pick Up'
+function printDate(iso: string) {
+  const date = new Date(iso)
+  return {
+    day: date.toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata', day: '2-digit', month: '2-digit', year: '2-digit' }),
+    time: date.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }),
+  }
+}
+
+function billMarkup(o: DOrder, branch: DBranch, settings: Record<SettingKey, string>) {
   const gstPct = Number(settings.gst_percent) || 5
-  const lines = o.items.map((l) => `<div class="r"><span>${esc(l.name_snapshot)} x${l.quantity}</span><span>${rs(l.line_total_paise)}</span></div>${l.notes ? `<div style="font-size:11px;color:#555;margin:-2px 0 4px">${esc(l.notes)}</div>` : ''}`).join('')
-  return printHtml(`#${o.order_number}`, `
-    <h2>FRIED KING</h2><div class="c">${esc(branch.name)}${branch.address ? `<br>${esc(branch.address)}` : ''}${branch.phone ? `<br>${esc(branch.phone)}` : ''}</div>
-    ${settings.gstin ? `<div class="c">GSTIN ${esc(settings.gstin)}</div>` : ''}
-    <hr><div class="r"><span>Token No: ${o.token_number ?? '—'}</span><span>Bill No: ${o.order_number}</span></div><div class="r"><span>${esc(typeLabel(o.order_type))}${o.table_number ? ` · T${o.table_number}` : ''}</span><span>${ist(o.created_at)}</span></div>
-    <div>${esc(customerName(o))} · ${esc(phoneShort(o.customer?.phone))}</div>${o.delivery_address ? `<div>${esc(o.delivery_address)}</div>` : ''}
-    <hr>${lines}
-    <hr><div class="r"><span>Subtotal</span><span>${rs(o.subtotal_paise)}</span></div>
-    <div class="r"><span>CGST ${gstPct / 2}%</span><span>${rs(Math.floor(o.gst_paise / 2))}</span></div>
-    <div class="r"><span>SGST ${gstPct / 2}%</span><span>${rs(o.gst_paise - Math.floor(o.gst_paise / 2))}</span></div>
-    ${o.order_type === 'delivery' && o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise) > 0 ? `<div class="r"><span>Delivery fee</span><span>${rs(o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise))}</span></div>` : ''}
-    ${o.discount_paise ? `<div class="r"><span>Discount</span><span>−${rs(o.discount_paise)}</span></div>` : ''}
-    ${o.loyalty_discount_paise ? `<div class="r"><span>Points (${o.loyalty_points_redeemed})</span><span>−${rs(o.loyalty_discount_paise)}</span></div>` : ''}
-    <div class="r t"><span>TOTAL</span><span>${rs(o.total_paise)}</span></div>
-    ${o.special_instructions ? `<hr><div>Note: ${esc(o.special_instructions)}</div>` : ''}
-    ${o.taken_by ? `<div>Order by ${esc(o.taken_by)}</div>` : ''}${o.payment_taken_by ? `<div>Cash: ${esc(o.payment_taken_by)}</div>` : ''}
-    <div class="c" style="margin-top:9px">${o.cash_collected ? 'Paid' : `Pay ${o.order_type === 'delivery' ? 'on delivery' : 'at the counter'}`}</div>
-    <hr><div class="c">${esc(settings.tagline || 'Thank you!')}</div>`)
+  const halfGst = Math.floor(o.gst_paise / 2)
+  const date = printDate(o.created_at)
+  const phone = settings.whatsapp_number || branch.phone || ''
+  const branchName = branch.name.toLowerCase().includes('fried king') ? branch.name : `Fried king ${branch.name}`
+  const fee = o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise)
+  const rows = o.items.map((l) => `<tr><td>${esc(l.name_snapshot)}</td><td>${l.quantity}</td><td>${plainRs(l.unit_price_paise)}</td><td>${plainRs(l.line_total_paise)}</td></tr>${l.notes ? `<tr><td colspan="4" class="note">Note: ${esc(l.notes)}</td></tr>` : ''}`).join('')
+  const totalQty = o.items.reduce((sum, l) => sum + l.quantity, 0)
+  return `<section class="bill">
+    <img class="logo" src="/brand/logo-red.png" alt="Fried King">
+    <div class="brand">${esc(branchName)}</div><div class="phone">Mob no: ${esc(phone)}</div>
+    <hr class="line"><div>Name: ${esc(customerName(o))}</div><hr class="line">
+    <div class="meta"><div>Date: ${date.day}<br>${date.time}</div><div class="right b">${esc(printType(o.order_type))}<br>Bill No.: ${o.order_number}</div>
+      <div>Cashier: ${esc(o.taken_by || 'biller')}<br><span class="b">Token No.: ${o.token_number ?? '—'}</span></div>
+      ${o.table_number ? `<div class="right">Table: ${o.table_number}</div>` : '<div></div>'}</div>
+    <hr class="line"><table class="items"><thead><tr><th>Item</th><th>Qty.</th><th>Price</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table>
+    <hr class="line"><div class="totals"><div class="r"><span>Total Qty: ${totalQty}</span><span>Sub Total&nbsp; ${plainRs(o.subtotal_paise)}</span></div>
+      <div class="r"><span></span><span>Total&nbsp; ${plainRs(o.subtotal_paise)}</span></div>
+      <div class="r"><span>CGST@${gstPct / 2}%</span><span>${plainRs(halfGst)}</span></div>
+      <div class="r"><span>SGST@${gstPct / 2}%</span><span>${plainRs(o.gst_paise - halfGst)}</span></div>
+      ${fee > 0 ? `<div class="r"><span>Delivery fee</span><span>${plainRs(fee)}</span></div>` : ''}
+      ${o.discount_paise ? `<div class="r"><span>Discount</span><span>-${plainRs(o.discount_paise)}</span></div>` : ''}
+      ${o.loyalty_discount_paise ? `<div class="r"><span>Points</span><span>-${plainRs(o.loyalty_discount_paise)}</span></div>` : ''}
+      <div class="r grand"><span>Grand Total</span><span>₹ ${plainRs(o.total_paise)}</span></div></div>
+    <div style="margin-top:3px">${o.cash_collected ? 'Paid' : 'Not Paid'}</div>
+    <div class="thanks">*****Thank You Visit Again*****</div>
+  </section>`
+}
+
+function kotMarkup(o: DOrder) {
+  const date = printDate(o.created_at)
+  const rows = o.items.map((l) => `<tr><td>${esc(l.name_snapshot)}${l.menu_item?.description ? `<div class="desc">Description: ${esc(l.menu_item.description)}</div>` : ''}${l.notes ? `<div class="note">Special note: ${esc(l.notes)}</div>` : ''}</td><td>${l.quantity}</td></tr>`).join('')
+  return `<section class="kot"><div class="c">${date.day} ${date.time}</div><h2>KOT - ${o.token_number ?? '—'}<br>${esc(printType(o.order_type))}</h2>
+    <hr class="dots"><table class="items"><thead><tr><th>Item</th><th>Qty.</th></tr></thead><tbody>${rows}</tbody></table>
+    ${o.special_instructions ? `<hr class="dots"><div><b>Order note:</b> ${esc(o.special_instructions)}</div>` : ''}</section>`
+}
+
+export function printReceipt(o: DOrder, branch: DBranch, settings: Record<SettingKey, string>) {
+  return printHtml(`Bill ${o.order_number} + KOT ${o.token_number ?? ''}`, `${billMarkup(o, branch, settings)}${kotMarkup(o)}`)
 }
 
 export function printKOT(o: DOrder, branch: DBranch): boolean {
-  const lines = o.items.map((l) => `<div style="margin:8px 0"><div class="r"><b>${l.quantity} × ${esc(l.name_snapshot)}</b></div>${l.menu_item?.description ? `<div style="font-size:11px">${esc(l.menu_item.description)}</div>` : ''}${l.notes ? `<div style="font-size:11px"><b>Note:</b> ${esc(l.notes)}</div>` : ''}</div>`).join('')
-  return printHtml(`KOT ${o.order_number}`, `
-    <h2>KITCHEN ORDER TICKET</h2><div class="c">${esc(branch.name)}</div>
-    <hr><div class="r"><span>Token No: ${o.token_number ?? '—'}</span><span>Bill No: ${o.order_number}</span></div>
-    <div class="r"><span>${esc(typeLabel(o.order_type))}${o.table_number ? ` · T${o.table_number}` : ''}</span><span>${ist(o.created_at)}</span></div>
-    <hr>${lines}${o.special_instructions ? `<hr><b>Order note:</b> ${esc(o.special_instructions)}` : ''}`)
+  return printHtml(`KOT ${o.token_number ?? o.order_number}`, kotMarkup(o))
 }
 
 export function printTableQR(tableNumber: number, whatsapp: string): boolean {
