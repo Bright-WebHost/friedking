@@ -10,7 +10,7 @@ The endpoint uses the dashboard's existing Done action: it records cash, marks t
 
 ## n8n changes and release order
 
-Two workflow updates are prepared, but must be published after the new app endpoint is deployed:
+The release deploys the app endpoint first, then publishes these workflow updates in order:
 
 1. Main (`bs21eCX2lGfXAeme`): route interactive and template replies with `fk_paid:<order UUID>` before takeover/opening-hour checks; call the app endpoint; retain legacy message-context matching; correct the rider reply. Status callbacks also replace stored YCloud IDs with WhatsApp WAMIDs when available.
 2. Order Events (`ppgSbbKzkPUQBdgF`): send a clearly labelled rider message with customer phone, address, order total and cash to collect. Inside the rider's 24-hour window, use an interactive button. Otherwise retain the approved six-parameter `friedking_rider_msg` template and attach the same order UUID as its quick-reply payload. Rider sends use YCloud's synchronous endpoint so the WhatsApp message ID can be saved. Customer rider-assignment messages use the scooter emoji.
@@ -34,3 +34,11 @@ If the live workflows change before release, re-export and review the result ins
 - Actual receipt PNGs were rendered and visually checked at phone width and with long names/notes.
 
 These checks do not send real customer messages or modify live orders. After publishing the app and workflows, verify one agreed test delivery on a rider's phone to confirm provider delivery and the resulting customer message.
+
+## Published release
+
+App commit `455cd0c` was pushed to `main` and verified live on 17 November 2026. The live payment endpoint returned 401 without authentication, 400 for an authenticated invalid request, and `not_found` for a nonexistent delivery. The deployed homepage bundle contains `Order placed`; the promotions API and active banner image returned HTTP 200.
+
+Both workflow updates were published around 10:32 UTC and verified active with `activeVersionId` equal to `versionId`. Main's published version is `5532706a-01ac-4678-9844-98ade0cecbaf`; Order Events' version is `8a6c0b40-8269-4d1f-825d-b799352bf647`.
+
+Existing dispatch references for orders 1060, 1059, and 1047 were repaired using exact YCloud-ID/WAMID pairs found in recorded provider status callbacks. Only `rider_wa_message_id` was updated, with a comparison against the previous value. No order was marked paid or completed by this repair.

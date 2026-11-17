@@ -233,3 +233,11 @@ RLS is enabled throughout the schema. The browser uses the public Supabase clien
 - Offer banners use the original uploaded image. The project's Supabase image-transformation endpoint returned `403 FeatureNotEnabled` while the original returned HTTP 200.
 - POS clears a successful sale and navigates to Orders before its optional bill lookup/printing. It reserves the print window during the click, waits for receipt images, and closes the window after printing. Bill lookup failures leave the completed sale available through the order's Print action.
 - Verification included the production build, isolated server regression checks, and Chromium checks with mocked order APIs on desktop and mobile. The banner check loaded the actual public image. Real WhatsApp delivery and physical printer output require a live acceptance check after the application is deployed.
+
+## Rider and receipt release on 17 November 2026
+
+- Commit `455cd0c` deployed the table/POS/banner fixes and the later rider, receipt, confirmation, and Settings changes. Both matching n8n workflows were published and verified active.
+- `lib/rider/payment.ts` and `/api/rider/payment` confirm an assigned rider's payment through the dashboard Done action. The n8n quick-reply payload carries the order UUID; legacy dispatches retain WAMID matching. See `docs/RIDER_PAYMENT.md` for release details and verification.
+- Rider dispatch text labels the customer phone, address, order total and cash to collect. The customer assignment notification uses the scooter emoji.
+- Checkout confirmation now says `Order placed`. WhatsApp receipt PNGs have larger branding/text and a small `Developed by Loopdot` footer.
+- Restaurant Settings no longer displays or permits edits to the promotion limit; platform administration retains that control.
