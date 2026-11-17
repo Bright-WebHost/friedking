@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const admin = createAdminClient()
-    const SELECT = 'order_number, status, order_type, payment_method, subtotal_paise, gst_paise, total_paise, discount_paise, loyalty_discount_paise, delivery_address, table_number, special_instructions, created_at, cash_collected, branch_id, customer:customers(name, phone), items:order_items(name_snapshot, quantity, line_total_paise, line_no, notes)'
+    const SELECT = 'order_number, token_number, status, order_type, payment_method, subtotal_paise, gst_paise, total_paise, discount_paise, loyalty_discount_paise, delivery_address, table_number, special_instructions, created_at, cash_collected, branch_id, customer:customers(name, phone), items:order_items(name_snapshot, quantity, line_total_paise, line_no, notes)'
     let order
     if (isTable) {
       // One bill for the whole table: every round that was not cancelled, items merged by dish.
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     const typeLabel = order.order_type === 'pickup' ? 'TAKEAWAY' : String(order.order_type).toUpperCase()
     const payLabel = order.cash_collected ? 'PAID' : order.order_type === 'delivery' ? 'CASH ON DELIVERY' : 'PAY AT COUNTER'
-    const detail: Array<[string, string]> = [['Name', customer?.name || 'Guest'], ['Phone', custPhone]]
+    const detail: Array<[string, string]> = [['Token No.', String(order.token_number ?? '—')], ['Bill No.', String(order.order_number)], ['Name', customer?.name || 'Guest'], ['Phone', custPhone]]
     if (order.order_type === 'delivery' && order.delivery_address) detail.push(['Address', order.delivery_address])
     if (order.order_type === 'dine-in' && order.table_number) detail.push(['Table', String(order.table_number)])
     if (order.special_instructions) detail.push(['Note', order.special_instructions])
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
     const summary: Array<[string, string]> = [['Item total', rs(order.subtotal_paise)]]
     if (order.discount_paise > 0) summary.push(['Discount', `-${rs(order.discount_paise)}`])
     if (order.loyalty_discount_paise > 0) summary.push(['Reward points', `-${rs(order.loyalty_discount_paise)}`])
-    summary.push(['GST included (CGST + SGST)', rs(order.gst_paise)])
+    summary.push(['GST (CGST + SGST)', rs(order.gst_paise)])
     // Delivery fee = whatever the total has beyond items, GST and discounts (no extra column needed).
     const fee = order.total_paise - (order.subtotal_paise - order.discount_paise - order.loyalty_discount_paise + order.gst_paise)
     if (order.order_type === 'delivery' && fee > 0) summary.push(['Delivery fee', rs(fee)])

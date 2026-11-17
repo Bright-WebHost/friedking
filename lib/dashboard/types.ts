@@ -13,11 +13,13 @@ export interface DOrderItem {
   quantity: number
   line_total_paise: number
   notes: string | null
+  menu_item?: { description: string | null } | null
 }
 
 export interface DOrder {
   id: string
   order_number: number
+  token_number: number | null
   status: OrderStatus
   order_type: OrderType
   source: 'web' | 'pos' | 'whatsapp'

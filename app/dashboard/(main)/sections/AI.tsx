@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useDash } from '../kit'
 
 interface Proposal { type: string; summary: string; needsPasscode?: boolean; [k: string]: unknown }
-interface Msg { role: 'user' | 'assistant'; content: string; at: string; proposals?: Proposal[]; state?: 'done' | 'dismissed' }
+interface Msg { role: 'user' | 'assistant'; content: string; at: string; proposals?: Proposal[]; state?: 'done' | 'dismissed'; links?: Array<{ href: string; label: string }> }
 
 const QUICK = [
   { ic: '💰', q: "What are today's sales?" },
@@ -13,9 +13,19 @@ const QUICK = [
   { ic: '⭐', q: 'What are my best-selling items this week?' },
   { ic: '🛵', q: 'How much cash do riders still owe us?' },
   { ic: '👥', q: 'Who are my top customers?' },
-  { ic: '➕', q: 'Add 10 kg chicken to stock' },
-  { ic: '🚫', q: 'Mark Zinger Burger as sold out' },
+  { ic: '➕', q: 'Add [quantity] [ingredient] to stock' },
+  { ic: '🧾', q: 'Create a takeaway order for [customer], phone [number]: [items and quantities]' },
+  { ic: '✅', q: 'Check today’s sales, low stock, open tables, and pending orders' },
 ]
+
+function destination(type: string, slug: string) {
+  if (type.startsWith('stock_')) return { href: `/dashboard/${slug}/stock`, label: 'Open Stock' }
+  if (type.startsWith('order_') || type === 'rider_assign') return { href: `/dashboard/${slug}/orders`, label: 'Open Tables & Orders' }
+  if (type === 'setting') return { href: `/dashboard/${slug}/settings`, label: 'Open Settings' }
+  if (type === 'expense') return { href: `/dashboard/${slug}/pnl`, label: 'Open P&L' }
+  if (type.startsWith('dish_')) return { href: `/dashboard/${slug}/menu`, label: 'Open Menu' }
+  return null
+}
 
 /** Ask about sales, stock, tables and riders. Answers come from the branch's live data (read-only), through the same OpenAI model as the WhatsApp bot. */
 export default function AI() {
@@ -50,7 +60,11 @@ export default function AI() {
     try {
       const r = await api.post<{ summary: string }>('ai', 'execute', { actions: m.proposals, passcode: code })
       setCode('')
-      setMsgs((cur) => [...cur.map((x, k) => (k === i ? { ...x, state: 'done' as const } : x)), { role: 'assistant', content: `✅ Done: ${r.summary}`, at: new Date().toISOString() }])
+      const links = [...new Map(m.proposals.map((p) => {
+        const link = destination(p.type, slug)
+        return [link?.href, link]
+      }).filter((entry): entry is [string, { href: string; label: string }] => !!entry[1])).values()]
+      setMsgs((cur) => [...cur.map((x, k) => (k === i ? { ...x, state: 'done' as const } : x)), { role: 'assistant', content: `✅ Done: ${r.summary}`, at: new Date().toISOString(), links }])
       window.dispatchEvent(new Event('fk-orders-changed'))
     } catch (e) {
       setMsgs((cur) => [...cur, { role: 'assistant', content: `⚠️ ${e instanceof Error ? e.message : 'Could not do that.'}`, at: new Date().toISOString() }])
@@ -71,13 +85,14 @@ export default function AI() {
             <div className="aiempty-ic">🤖</div>
             <h3>Hi {staff.name.split(' ')[0]}, how can I help?</h3>
             <p>Try one of these, or type your own question.</p>
-            <div className="aicards">{QUICK.map((x) => <button key={x.q} className="aicard" onClick={() => void ask(x.q)}><b>{x.ic}</b>{x.q}</button>)}</div>
+            <div className="aicards">{QUICK.map((x) => <button key={x.q} className="aicard" onClick={() => setText(x.q)}><b>{x.ic}</b>{x.q}</button>)}</div>
           </div>
         ) : (
           <>
             {msgs.map((m, i) => (
               <div key={i} className={`aim ${m.role === 'user' ? 'out' : 'in'}`}>
                 {m.content}
+                {m.links && <div className="mt-2 flex flex-wrap gap-2">{m.links.map((link) => <a key={link.href} className="btn sm ghost" href={link.href}>{link.label} →</a>)}</div>}
                 {m.proposals && (
                   <div className="aiact">
                     {m.proposals.map((p, k) => <b key={k}>{p.summary}</b>)}
@@ -98,7 +113,7 @@ export default function AI() {
           </>
         )}
       </div>
-      {msgs.length > 0 && <div className="aiqq">{QUICK.map((x) => <button key={x.q} className="aiqchip" disabled={busy} onClick={() => void ask(x.q)}>{x.ic} {x.q}</button>)}</div>}
+      {msgs.length > 0 && <div className="aiqq">{QUICK.map((x) => <button key={x.q} className="aiqchip" disabled={busy} onClick={() => setText(x.q)}>{x.ic} {x.q}</button>)}</div>}
       <div className="aicompose">
         <input value={text} placeholder="Type a question…" autoComplete="off" disabled={busy} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void ask(text) }} />
         <button className="btn sm" disabled={busy || !text.trim()} onClick={() => void ask(text)}>Send</button>

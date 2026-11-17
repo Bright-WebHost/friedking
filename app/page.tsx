@@ -330,7 +330,7 @@ export default function CustomerPage() {
   const placeOrder = async () => {
     if (!branch || submitting) return
     const dineIn = orderType === 'dine-in' && tableNo !== null
-    const needVerify = vs.enabled && !dineIn
+    const needVerify = vs.enabled && !dineIn && !linked
     const needPhoneField = dineIn ? !linked && !tableInfo?.hasContact : !linked && !needVerify
     const e164 = needPhoneField ? normalizePhone(phone) : ''
     if (!name.trim()) return setFormError('Please enter your name.')
@@ -575,7 +575,7 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              {orderType !== 'dine-in' && <VerifyCard key={verifyKey} linkToken={linked ? linkToken : null} useSession={account.loggedIn} fixedMasked={linked ? linked.phoneMasked : account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
+              {!linked && orderType !== 'dine-in' && <VerifyCard key={verifyKey} linkToken={null} useSession={account.loggedIn} fixedMasked={account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
               {!linked && orderType !== 'dine-in' && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
@@ -678,7 +678,7 @@ export default function CustomerPage() {
             <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} />
             {offerPaise > 0 && cart.length > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mt-3" />}
             {minOrderShort > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-800">Add {formatPrice(minOrderShort)} more to reach the minimum delivery order.</p>}
-            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-fk-muted"><span aria-hidden>💵</span> Pay by cash {orderType === 'delivery' ? 'on delivery' : orderType === 'dine-in' ? 'at the counter' : 'at the counter'}. Prices include GST.</p>
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-fk-muted"><span aria-hidden>💵</span> Pay by cash {orderType === 'delivery' ? 'on delivery' : orderType === 'dine-in' ? 'at the counter' : 'at the counter'}. GST is added to the subtotal.</p>
           </Card>
 
           {formError && (
@@ -1289,7 +1289,7 @@ function TotalsBlock({ subtotalPaise, gstPaise, totalPaise, deliveryFeePaise = 0
   return (
     <dl className="mt-3 space-y-1.5 border-t border-dashed border-fk-line pt-3 text-sm">
       <div className="flex justify-between"><dt className="text-fk-muted">Subtotal</dt><dd>{formatPrice(subtotalPaise)}</dd></div>
-      <div className="flex justify-between"><dt className="text-fk-muted">GST included (5%)</dt><dd>{formatPrice(gstPaise)}</dd></div>
+      <div className="flex justify-between"><dt className="text-fk-muted">GST (5%)</dt><dd>{formatPrice(gstPaise)}</dd></div>
       {baseFeePaise > 0 && (
         <div className="flex justify-between">
           <dt className="text-fk-muted">Delivery fee</dt>

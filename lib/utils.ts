@@ -8,11 +8,11 @@ export function formatPrice(paise: number): string {
   return `₹${Number.isInteger(rupees) ? rupees : rupees.toFixed(2)}`
 }
 
-/** Order totals where menu prices already include 5% GST. Used by browser and server. */
+/** Order totals where menu prices are before 5% GST. Used by browser and server. */
 export function calcTotals(lines: Array<{ pricePaise: number; quantity: number }>): OrderTotals {
   const subtotalPaise = lines.reduce((sum, l) => sum + l.pricePaise * l.quantity, 0)
-  const gstPaise = Math.round(subtotalPaise * GST_RATE / (1 + GST_RATE))
-  return { subtotalPaise, gstPaise, totalPaise: subtotalPaise }
+  const gstPaise = Math.round(subtotalPaise * GST_RATE)
+  return { subtotalPaise, gstPaise, totalPaise: subtotalPaise + gstPaise }
 }
 
 /**

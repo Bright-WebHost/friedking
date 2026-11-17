@@ -29,20 +29,21 @@ WhatsApp customer -> YCloud -> n8n (staff.brightmedia.tech) -> Supabase / Next.j
 **WhatsApp bot** (n8n `Fried King | Main`): greeting, AI order-taking, Confirm / Modify / Cancel buttons, voice notes (Whisper), table QR scans ("Hi, I'm at Table 3" -> `open_table_session`; the customer's WhatsApp orders then attach to that table as dine-in), staff takeover switch (AI off per chat), real branch opening hours.
 - A WhatsApp order is an `orders` row with status `draft` (hidden from the dashboard). Confirm makes it `pending` and writes the normal `order_created` event (`source: whatsapp`). Customer-facing order numbers are `FK-<order_number>`.
 
-**One message per order (same as Rasoi)**, sent by n8n `Fried King | Order Events` (polls every 10 s):
-- Staff accept the order -> **one receipt image with a short caption**. Nothing for ready / out for delivery / delivered. Cancelled -> short text.
+**WhatsApp order notifications**, sent by n8n `Fried King | Order Events` (polls every 10 s) only inside the customer's 24-hour window:
+- Staff accept -> receipt image with a short caption; cancellation -> short text.
+- The outbox now adds `customerNotification` metadata for pickup-ready, delivered/thank-you, table-round and table-closed messages. Rider assignment writes the existing `rider_assigned` event for the rider and a separate `customer_rider_assigned` event for the customer. Existing fields remain compatible.
 - Dine-in: nothing until the table is closed, then one receipt for the whole table (`/api/receipt?session=<uuid>`).
 - Rider assigned -> template message with a "Payment collected" button; the rider's tap marks cash collected (`rider_confirm_payment`).
 - The receipt picture is drawn by the app itself (`app/api/receipt/route.tsx`, next/og + Poppins from `public/fonts`), keyed by the private order uuid. No third-party image service.
 - Free-form messages only work within 24 h of the customer's last message; otherwise the approved templates below are used.
 
-**Dashboard AI Assistant**: handler `lib/dashboard/handlers/ai.ts` builds a read-only data snapshot (sales, best sellers, stock, tables, rider cash) -> n8n `Fried King | Dashboard AI` (URL stored in `branch_settings.ai_webhook_url`) -> OpenAI `gpt-4.1-mini` via the n8n credential `Fried King | OpenAI`. Text only (no voice, no write actions).
+**Dashboard AI Assistant**: handler `lib/dashboard/handlers/ai.ts` builds a read-only data snapshot (sales, best sellers, stock, tables, rider cash) -> n8n `Fried King | Dashboard AI` (URL stored in `branch_settings.ai_webhook_url`) -> OpenAI `gpt-4.1-mini`. Quick prompts are editable; proposed writes require confirmation and show a link to the affected dashboard section.
 
 **Speed**: `vercel.json` pins functions to `sin1` (Singapore). Before that, Vercel ran in the US and each request took about 2 s.
 
 ## 3. ACTION NEEDED from Maithri (nothing below works until she does it)
 
-1. **Re-run in the Supabase SQL Editor, in this order** (both idempotent): `supabase/friedking_whatsapp_bot.sql`, then `supabase/friedking_order_notifier.sql`. They add: real branch hours in `chat_context`, rider payment, table bill and rider events in the notifier, `wa_links`, Live Chat reply functions. Until then the bot and receipts keep working in their older form (the n8n workflows were made tolerant of the old SQL).
+1. **Run/re-run in the Supabase SQL Editor, in this order** (all idempotent): `supabase/friedking_whatsapp_bot.sql`, the updated `supabase/friedking_order_notifier.sql`, then `supabase/friedking_order_tokens.sql`. The notifier migration exposes the new notification metadata and claims `customer_rider_assigned` plus table-round events. The token migration adds the daily per-branch Token No.; Bill No. remains `orders.order_number`.
 2. **Put a real OpenAI key in n8n** credential `Fried King | OpenAI`. It currently holds a placeholder (`sk-PASTE...KEY`), so the dashboard AI Assistant and the bot's free-text order-taking cannot answer.
 3. **Create 3 templates in YCloud** (English, category Utility):
    - `friedking_order_receipt`, header = Image. Body: `Hi {{1}}, thank you for ordering from Fried King! Your order {{2}} (total {{3}}) is confirmed. Your receipt is attached.`
@@ -82,21 +83,21 @@ Editing workflows through the n8n public API (what was done so far): `GET /api/v
 
 ## 6. Database
 
-Run in the Supabase SQL Editor, in this order: `friedking_schema_migration_v2.sql`, `friedking_pandeshwar_menu_seed_v4.sql` (repo root), `supabase/friedking_schema_migration_v3_orders.sql`, `friedking_dashboard_phase1.sql`, `..._phase1_tables.sql`, `..._phase2.sql`, `friedking_menu_promotions.sql`, `friedking_menu_storage.sql`, `friedking_dashboard_oceana.sql`, `friedking_whatsapp_bot.sql`, `friedking_order_notifier.sql`, then `supabase/friedking_platform_admin.sql` (plus the item-image and branch-rename files). Project ref `alhnmwwbdydcgcgnwhqw`, Pandeshwar branch id `a1b2c3d4-0001-0001-0001-000000000001`.
+Run in the Supabase SQL Editor, in this order: `friedking_schema_migration_v2.sql`, `friedking_pandeshwar_menu_seed_v4.sql` (repo root), `supabase/friedking_schema_migration_v3_orders.sql`, `friedking_dashboard_phase1.sql`, `..._phase1_tables.sql`, `..._phase2.sql`, `friedking_menu_promotions.sql`, `friedking_menu_storage.sql`, `friedking_dashboard_oceana.sql`, `friedking_whatsapp_bot.sql`, `friedking_order_notifier.sql`, `friedking_order_tokens.sql`, then `supabase/friedking_platform_admin.sql` (plus the item-image and branch-rename files). Project ref `alhnmwwbdydcgcgnwhqw`, Pandeshwar branch id `a1b2c3d4-0001-0001-0001-000000000001`.
 
 Key functions (all `security definer`, service role only): `fk_stock_move`, `fk_order_stock` (stock leaves on accept / POS create, returns on cancel), `fk_loyalty_earn` (on delivered), `fk_loyalty_redeem`, bot: `chat_context`, `customer_draft`, `customer_amend`, `customer_confirm`, `customer_cancel`, `open_table_session`, `rider_confirm_payment`, `receipt_order`, notifier: `claim_order_events`, `complete_order_event`, chat: `claim_chat_replies`, `complete_chat_reply`.
-Outbox events written: `order_created` (website, POS, bot), `order_status_changed`, `order_amended`, `rider_assigned`, `invoice_requested`, `table_invoice_requested`. `order_created` and `order_status_changed` keep their original fields; extra fields are additive. Tell Maithri before changing any payload.
+Outbox events written: `order_created` (website, POS, bot), `order_status_changed`, `order_amended`, `rider_assigned`, `customer_rider_assigned`, `invoice_requested`, `table_invoice_requested`. `order_created` and `order_status_changed` keep their original fields; extra fields such as `customerNotification` are additive. Tell Maithri before changing any payload.
 
 ## 7. Rules and gotchas learned the hard way
 
-- Money is integer paise everywhere; menu prices include 5% GST, which is extracted from the inclusive total. Server is the source of truth for prices.
+- Money is integer paise everywhere; menu prices are before 5% GST, which is added to new order totals. Historical stored orders retain their original totals. Server is the source of truth for prices.
 - Phones are `+91XXXXXXXXXX` in the database; WhatsApp ids are digits.
 - `orders.status` enum: `draft` (WhatsApp, unconfirmed), `pending` (= new, awaiting accept), `confirmed` (unused), `preparing`, `ready`, `delivered`, `cancelled`. Dashboard queries filter by the real statuses so they work even before `draft` exists. Drafts must never reach the dashboard.
 - Changing a Postgres function's signature: `drop function if exists` the old one first, otherwise PostgREST sees two overloads and fails. `alter type ... add value` and using the new value in the same transaction fails; use plpgsql so function bodies are not checked at creation.
 - Vercel must stay in `sin1`; do not remove `vercel.json`.
 - Browsers and the dashboard hide nothing sensitive, but the service role key is server-only (`lib/supabase/admin.ts`, API routes).
 - Platform controls live at `/platform-admin`, separately from the client dashboard. Access requires a Supabase Auth user listed in `platform_admins`; do not create a hidden `staff` owner account for this purpose. The migration is `supabase/friedking_platform_admin.sql`, and changes are recorded in `platform_admin_audit`.
-- WhatsApp: free-form only inside 24 h, everything else needs an approved template. One message per order is a client decision (cost).
+- WhatsApp: free-form only inside 24 h, everything else needs an approved template. Status notifications are window-only; existing receipt/template routing remains in n8n.
 - This Windows machine: a dev server may already be running on port 3000 or 3001; Git warns about LF/CRLF (harmless). In n8n Code nodes, newlines inside JS strings must be real backslash-n characters; when scripting edits, build them without relying on shell escaping.
 - Test locally without touching production: a throwaway Postgres (PGlite) ran all SQL files successfully; copy that approach for new SQL.
 

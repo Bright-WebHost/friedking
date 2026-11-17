@@ -88,9 +88,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(placed, { status: 200 })
     }
 
-    // Every web order must prove the phone by a WhatsApp message (skipped only while the SQL is not installed).
+    // WhatsApp link tokens already prove the phone. External website orders still require OTP.
     let verificationId: string | null = null
-    if (!isDineIn && await verificationEnabled(supabase)) {
+    if (!isDineIn && link) {
+      phone = link.phone
+    } else if (!isDineIn && await verificationEnabled(supabase)) {
       const { data: v } = verifySecret
         ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at').eq('secret', verifySecret).maybeSingle()
         : { data: null }
@@ -222,6 +224,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Outbox row: n8n picks this up and sends the WhatsApp confirmation.
+    let tableRunningTotalPaise: number | null = null
+    if (sessionId) {
+      const { data: tableOrders, error: tableTotalError } = await supabase
+        .from('orders').select('total_paise').eq('table_session_id', sessionId).neq('status', 'cancelled')
+      if (tableTotalError) console.error('[POST /api/order] table total:', tableTotalError.message)
+      else tableRunningTotalPaise = (tableOrders ?? []).reduce((sum, row) => sum + Number(row.total_paise ?? 0), 0)
+    }
+
     const { error: eventErr } = await supabase.from('order_events').insert({
       order_id: order.id,
       branch_id: branch.id,
@@ -244,6 +254,7 @@ export async function POST(req: NextRequest) {
         items: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPricePaise: l.pricePaise })),
         ...totals,
         totalPaise: grandTotalPaise,
+        ...(sessionId ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: grandTotalPaise, tableRunningTotalPaise } } : {}),
       },
     })
     if (eventErr) console.error('[POST /api/order] order_events (order still placed):', eventErr.message)

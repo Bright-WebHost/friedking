@@ -8,6 +8,8 @@ interface Branch {
   name: string
   slug: string
   blastMonthlyLimit: number
+  blastSentThisMonth: number
+  blastRemaining: number
 }
 
 interface AuditRow {
@@ -108,7 +110,7 @@ export default function PlatformAdminPage() {
         {error && <p className="mb-3 rounded-lg bg-fk-tint px-3 py-2 text-sm text-fk-nonveg">{error}</p>}
         {message && <p className="mb-3 rounded-lg bg-[#e7f6ed] px-3 py-2 text-sm text-[#1f8a4c]">{message}</p>}
         <section className="rounded-2xl bg-white p-5 shadow-sm">
-          <h2 className="mb-1 text-lg font-bold">Monthly blast limits</h2>
+          <h2 className="mb-1 text-lg font-bold">Monthly promotion limits</h2>
           <p className="mb-4 text-sm text-fk-muted">Changes apply to the selected branch and are recorded in the platform audit log.</p>
           <div className="space-y-3">
             {data.branches.map((branch) => <BranchLimit key={branch.id} branch={branch} disabled={busy} onSave={save} />)}
@@ -129,7 +131,7 @@ function BranchLimit({ branch, disabled, onSave }: { branch: Branch; disabled: b
   const [value, setValue] = useState(String(branch.blastMonthlyLimit))
   useEffect(() => { setValue(String(branch.blastMonthlyLimit)) }, [branch.blastMonthlyLimit])
   return <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[#e6e9ee] p-3">
-    <div className="min-w-[180px] flex-1"><b>{branch.name}</b><div className="text-xs text-fk-muted">{branch.slug}</div></div>
+    <div className="min-w-[180px] flex-1"><b>{branch.name}</b><div className="text-xs text-fk-muted">{branch.slug}</div><div className="mt-1 text-xs font-semibold text-fk-muted">Used {branch.blastSentThisMonth} · Remaining {branch.blastRemaining}</div></div>
     <input className="w-36 rounded-lg border border-[#e6e9ee] p-2" type="number" min="0" max="1000000" value={value} onChange={(event) => setValue(event.target.value)} />
     <button className="rounded-lg bg-fk-red px-4 py-2 text-sm font-bold text-white disabled:opacity-60" disabled={disabled} onClick={() => void onSave(branch.id, value)}>Save</button>
   </div>

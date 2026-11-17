@@ -52,7 +52,8 @@ export default function POS() {
   const hits = digits.length >= 3 && typeahead ? (data?.customers ?? []).filter((c) => c.phone.includes(digits)).slice(0, 6) : []
 
   const program = data?.program
-  const discountPaise = discOn && isBoss(staff.role) ? Math.max(0, Math.round((Number(disc) || 0) * 100)) : 0
+  const discountPct = discOn && isBoss(staff.role) ? Math.min(100, Math.max(0, Number(disc) || 0)) : 0
+  const discountPaise = Math.round(totals.totalPaise * discountPct / 100)
   const maxPts = program && match && match.points_balance > 0
     ? Math.max(0, Math.min(match.points_balance, Math.floor(((totals.totalPaise - discountPaise) * program.max_redeem_pct_per_order / 100) / program.redemption_paise_per_point)))
     : 0
@@ -88,7 +89,7 @@ export default function POS() {
       const r = await api.post<{ orderId: string; orderNumber: number; totalPaise: number }>('pos', 'create', {
         phone: digits, name, orderType: type, address, pincode, tableNumber: type === 'dine-in' ? Number(table) : null,
         lines: lines.map((l) => ({ itemId: l.item.id, quantity: l.qty })),
-        redeemPoints: pts, discountPaise, discountReason: discReason,
+        redeemPoints: pts, discountPct: discountPct || undefined, discountReason: discReason,
       })
       toast(`#${r.orderNumber} sent to the kitchen`)
       if (settings.auto_print === 'true') {
@@ -204,8 +205,12 @@ export default function POS() {
           </div>}
           {isBoss(staff.role) && <div className="posdisc">
             <div className="plh" style={{ cursor: 'pointer' }} onClick={() => setDiscOn((d) => !d)}><b>💸 Staff discount</b><span>{discOn ? 'remove' : 'add'}</span></div>
-            {discOn && <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-              <input className="f2" type="number" min={0} placeholder="Amount ₹" value={disc} onChange={(e) => setDisc(e.target.value)} style={{ margin: 0 }} />
+            {discOn && <div style={{ marginTop: 8 }}>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                {[5, 10, 20].map((pct) => <button key={pct} className={`btn ${Number(disc) === pct ? 'on' : 'ghost'}`} onClick={() => setDisc(String(pct))}>{pct}%</button>)}
+                <button className={`btn ${disc && ![5, 10, 20].includes(Number(disc)) ? 'on' : 'ghost'}`} onClick={() => setDisc('0')}>Custom</button>
+              </div>
+              {disc && ![5, 10, 20].includes(Number(disc)) && <input className="f2" type="number" min={0} max={100} placeholder="Custom percentage" value={disc} onChange={(e) => setDisc(e.target.value)} style={{ margin: 0 }} />}
               <input className="f2" placeholder="Reason" value={discReason} onChange={(e) => setDiscReason(e.target.value)} style={{ margin: 0 }} />
             </div>}
           </div>}

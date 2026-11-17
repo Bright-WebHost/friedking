@@ -3,13 +3,13 @@ import { isBoss } from '@/lib/dashboard/access'
 import { audit, check, emitOrderEvent, getSettings, HttpError, id, int, optStr, str, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
-export const ORDER_SELECT = `id, order_number, status, order_type, source, payment_method, subtotal_paise, gst_paise, total_paise,
+export const ORDER_SELECT = `id, order_number, token_number, status, order_type, source, payment_method, subtotal_paise, gst_paise, total_paise,
   discount_paise, discount_reason, loyalty_points_redeemed, loyalty_discount_paise, delivery_address, delivery_pincode,
   special_instructions, created_at, updated_at, accepted_at, accepted_by, prep_minutes, ready_at, delivered_at, cancelled_at,
   cancelled_by, cancel_reason, taken_by, rider_id, rider_assigned_at, cash_collected, cash_amount_paise, cash_collected_at,
   payment_taken_by, printed_at, amendment_count, amended_at, table_session_id, table_number, customer_id,
   customer:customers(id, name, phone),
-  items:order_items(id, menu_item_id, name_snapshot, unit_price_paise, quantity, line_total_paise, notes)`
+  items:order_items(id, menu_item_id, name_snapshot, unit_price_paise, quantity, line_total_paise, notes, menu_item:menu_items(description))`
 
 type Status = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled'
 const FLOW: Status[] = ['pending', 'preparing', 'ready', 'delivered']
@@ -101,11 +101,21 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
   }
 
   if (from !== to) {
+    const customerNotification = to === 'cancelled'
+      ? { kind: 'cancelled', windowOnly: true, reason: opts.reason ?? null }
+      : from === 'pending' && to === 'preparing'
+        ? { kind: 'accepted', receipt: true, windowOnly: true }
+        : to === 'ready' && order.order_type === 'pickup'
+          ? { kind: 'ready_for_pickup', windowOnly: true }
+          : to === 'delivered' && order.order_type !== 'dine-in'
+            ? { kind: 'thank_you', windowOnly: true }
+            : null
     await emitOrderEvent(ctx, order.id, 'order_status_changed', {
       orderNumber: order.order_number,
       status: to,
       previousStatus: from,
       orderType: order.order_type,
+      customerNotification,
       ...(opts.prepMinutes ? { prepMinutes: opts.prepMinutes } : {}),
       ...(opts.reason ? { reason: opts.reason } : {}),
     })
@@ -205,6 +215,10 @@ export const ordersHandler: Handler = {
       await emitOrderEvent(ctx, order.id, 'rider_assigned', {
         orderNumber: order.order_number, riderName: rider.name, riderPhone: rider.phone,
         amountPaise: order.cash_collected ? 0 : order.total_paise,
+      })
+      await emitOrderEvent(ctx, order.id, 'customer_rider_assigned', {
+        orderNumber: order.order_number, riderName: rider.name, riderPhone: rider.phone,
+        customerNotification: { kind: 'rider_assigned', windowOnly: true, riderName: rider.name, riderPhone: rider.phone },
       })
       await audit(ctx, { orderId: order.id, orderNumber: order.order_number, action: 'assign_rider', to: rider.name })
       return { ok: true, riderName: rider.name }

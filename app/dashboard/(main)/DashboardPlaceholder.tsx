@@ -8,7 +8,7 @@ const SECTIONS: Record<string, { title: string; icon: string; description: strin
   ai: { title: 'AI Assistant', icon: '🤖', description: 'Ask about sales, stock, tables, and operational tasks.' },
   contacts: { title: 'Contacts', icon: '👥', description: 'Manage customer contacts, order history, and opt-out preferences.' },
   loyalty: { title: 'Loyalty', icon: '🎁', description: 'Build Fried King rewards, points, redemption, and customer retention.' },
-  blast: { title: 'Broadcasts', icon: '📣', description: 'Send approved offers and updates to opted-in WhatsApp customers.' },
+  blast: { title: 'Promotion', icon: '📣', description: 'Send approved offers and updates to opted-in WhatsApp customers.' },
   settings: { title: 'Settings', icon: '⚙️', description: 'Manage branch details, hours, delivery rules, staff access, and notifications.' },
 }
 

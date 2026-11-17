@@ -4,7 +4,7 @@ import { useCallback, useState } from 'react'
 import type { DOrder, OrderStatus } from '@/lib/dashboard/types'
 import { isBoss } from '@/lib/dashboard/access'
 import {
-  customerName, fmtMins, ist, minsSince, Modal, PasscodeModal, phoneShort, printReceipt, rs, statusLabel, typeLabel, useDash,
+  customerName, fmtMins, ist, minsSince, Modal, PasscodeModal, phoneShort, printKOT, printReceipt, rs, statusLabel, typeLabel, useDash,
 } from '../kit'
 
 const FLOW: OrderStatus[] = ['pending', 'preparing', 'ready', 'delivered']
@@ -120,6 +120,9 @@ export function useOrderActions(reload: () => unknown) {
     if (printReceipt(o, branch, settings)) void api.post('orders', 'printed', { orderId: o.id }).catch(() => undefined)
     else toast('Allow pop-ups to print')
   }, [api, branch, settings, toast])
+  const printKOTOrder = useCallback((o: DOrder) => {
+    if (!printKOT(o, branch)) toast('Allow pop-ups to print')
+  }, [branch, toast])
 
   const edit = useCallback((o: DOrder) => {
     if (!canEdit(o)) { toast(`Can't edit #${o.order_number}: already ${statusLabel(o)}`); return }
@@ -130,7 +133,7 @@ export function useOrderActions(reload: () => unknown) {
     setModal(<OrderDetails o={o} rounds={rounds} onClose={close} />)
   }, [close])
 
-  return { modal, setModal, close, setStatus, assignRider, markDone, cash, cancel, print, edit, details }
+  return { modal, setModal, close, setStatus, assignRider, markDone, cash, cancel, print, printKOT: printKOTOrder, edit, details }
 }
 
 function MarkDone({ o, dine, onClose, onOk }: { o: DOrder; dine: boolean; onClose: () => void; onOk: (pay: boolean, inv: boolean) => void }) {
@@ -166,7 +169,7 @@ function OrderDetails({ o, rounds, onClose }: { o: DOrder; rounds?: DOrder[]; on
       <div className="oitems" style={{ marginBottom: 10 }}><LineItems o={o} /></div>
       {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
       <div className="li"><span>Subtotal</span><span>{rs(o.subtotal_paise)}</span></div>
-      <div className="li"><span>GST included</span><span>{rs(o.gst_paise)}</span></div>
+      <div className="li"><span>GST (5%)</span><span>{rs(o.gst_paise)}</span></div>
       {o.discount_paise > 0 && <div className="li"><span>Discount{o.discount_reason ? ` (${o.discount_reason})` : ''}</span><span>−{rs(o.discount_paise)}</span></div>}
       {o.loyalty_discount_paise > 0 && <div className="li"><span>Points ({o.loyalty_points_redeemed})</span><span>−{rs(o.loyalty_discount_paise)}</span></div>}
       <div className="ctot" style={{ marginTop: 8 }}><span>{rounds && rounds.length > 1 ? 'This round' : 'Total'}</span><span>{rs(o.total_paise)}</span></div>
@@ -224,7 +227,7 @@ function EditOrder({ o, onClose, onSaved }: { o: DOrder; onClose: () => void; on
       </div>
       <input className="f2" placeholder="Add a dish: search by name…" value={q} onFocus={() => void loadMenu()} onChange={(e) => { setQ(e.target.value); void loadMenu() }} autoComplete="off" />
       {hits.length > 0 && <div className="rlist">{hits.map((m) => <button key={m.id} onClick={() => add(m)}>{m.name} · {rs(m.price_paise)}</button>)}</div>}
-      <div className="ctot"><span>New subtotal (incl. GST)</span><span>{rs(subtotal)}</span></div>
+      <div className="ctot"><span>New food subtotal</span><span>{rs(subtotal)}</span></div>
       <div className="mrow"><button onClick={onClose}>Cancel</button><button className="go" disabled={!lines.length || saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save changes'}</button></div>
     </Modal>
   )

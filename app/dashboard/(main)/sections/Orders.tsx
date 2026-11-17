@@ -123,6 +123,7 @@ export default function Orders() {
           {!['delivered', 'cancelled'].includes(o.status) && <button className="x" onClick={() => act.cancel(o)}>Cancel</button>}
           {canEdit(o) && <button onClick={() => act.edit(o)}>Edit</button>}
           <button onClick={() => act.print(o)}>Print</button>
+          <button onClick={() => act.printKOT(o)}>KOT</button>
         </div>
       </div>
     )
@@ -234,6 +235,7 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
               </>}
               {canEdit(o) && <button className="mobtn" onClick={() => act.edit(o)}>Edit</button>}
               <button className="mobtn" onClick={() => act.print(o)}>Print</button>
+              <button className="mobtn" onClick={() => act.printKOT(o)}>KOT</button>
             </div>
           </div>
         )) : <div className="none">Nothing here</div>}

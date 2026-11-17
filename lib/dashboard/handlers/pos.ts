@@ -97,7 +97,11 @@ export const posHandler: Handler = {
       const totals = calcTotals(lines)
 
       // Staff discount (managers and owners only).
-      const discountPaise = b.discountPaise ? int(b.discountPaise, 'discount', 0, totals.totalPaise) : 0
+      const discountPct = b.discountPct === undefined || b.discountPct === null || b.discountPct === ''
+        ? null : int(b.discountPct, 'discount percentage', 0, 100)
+      const discountPaise = discountPct === null
+        ? (b.discountPaise ? int(b.discountPaise, 'discount', 0, totals.totalPaise) : 0)
+        : Math.round(totals.totalPaise * discountPct / 100)
       if (discountPaise && !isBoss(ctx.staff.role)) throw new HttpError(403, 'Only a manager can give a discount')
       const discountReason = discountPaise ? optStr(b.discountReason, 120) : null
 
@@ -171,12 +175,21 @@ export const posHandler: Handler = {
       const { error: stockError } = await ctx.admin.rpc('fk_order_stock', { p_order_id: order.id, p_sign: -1, p_staff: ctx.staff.name })
       if (stockError) console.error('[dashboard] POS stock', stockError.message)
 
+      let tableRunningTotalPaise: number | null = null
+      if (sessionId) {
+        const { data: tableOrders, error: tableTotalError } = await ctx.admin.from('orders')
+          .select('total_paise').eq('table_session_id', sessionId).neq('status', 'cancelled')
+        if (tableTotalError) console.error('[dashboard] POS table total', tableTotalError.message)
+        else tableRunningTotalPaise = (tableOrders ?? []).reduce((sum, row) => sum + Number(row.total_paise ?? 0), 0)
+      }
+
       await emitOrderEvent(ctx, order.id, 'order_created', {
         orderNumber: order.order_number, branchName: ctx.branch.name, customerName: name || null, customerPhone: phone,
         orderType: type, paymentMethod: 'cash', deliveryAddress: type === 'delivery' ? address : null,
         specialInstructions: null, source: 'pos', tableNumber,
         items: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPricePaise: l.pricePaise })),
         subtotalPaise: totals.subtotalPaise, gstPaise: totals.gstPaise, totalPaise: total,
+        ...(sessionId ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: total, tableRunningTotalPaise } } : {}),
       })
       await audit(ctx, { orderId: order.id, orderNumber: order.order_number, action: 'pos_order', to: 'preparing', detail: `${type}${tableNumber ? ` · table ${tableNumber}` : ''} · by ${ctx.staff.name}` })
       return { orderId: order.id, orderNumber: order.order_number, totalPaise: total }

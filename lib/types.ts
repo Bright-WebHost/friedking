@@ -21,7 +21,7 @@ export interface MenuItem {
   id: string
   name: string
   description: string | null
-  /** Price in paise (Rs 1 = 100 paise) */
+  /** Price in paise before GST (Rs 1 = 100 paise) */
   pricePaise: number
   imageUrl: string | null
   isVeg: boolean

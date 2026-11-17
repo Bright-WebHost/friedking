@@ -27,6 +27,11 @@ function fail(message: string, status: number) {
   return NextResponse.json({ message }, { status })
 }
 
+function monthStartIST() {
+  const now = new Date(Date.now() + 5.5 * 3600000)
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 5.5 * 3600000).toISOString()
+}
+
 export async function GET() {
   const access = await authorize()
   if (!access) return fail('You are not authorised for the platform admin page.', 403)
@@ -44,12 +49,31 @@ export async function GET() {
   }
 
   const limits = new Map((settings ?? []).map((row) => [row.branch_id, Number(row.value)]))
+  const usageResults = await Promise.all((branches ?? []).map(async (branch) => {
+    const result = await access.admin.from('outbound_messages')
+      .select('id', { count: 'exact', head: true })
+      .eq('branch_id', branch.id).eq('kind', 'blast').neq('status', 'failed').gte('created_at', monthStartIST())
+    return { branchId: branch.id, count: result.count, error: result.error }
+  }))
+  const usageError = usageResults.find((result) => result.error)?.error
+  if (usageError) {
+    console.error('[platform admin] usage:', usageError.message)
+    return fail('Could not load promotion usage.', 500)
+  }
+  const usage = usageResults.map((result) => {
+    const limit = Number.isInteger(limits.get(result.branchId)) && (limits.get(result.branchId) ?? -1) >= 0 ? limits.get(result.branchId)! : DEFAULT_LIMIT
+    const sentThisMonth = result.count ?? 0
+    return [result.branchId, { sentThisMonth, remaining: Math.max(0, limit - sentThisMonth) }] as const
+  })
+  const usageMap = new Map(usage)
   return NextResponse.json({
     adminName: access.name,
     branches: (branches ?? []).map((branch) => ({
       ...branch,
       blastMonthlyLimit: Number.isInteger(limits.get(branch.id)) && (limits.get(branch.id) ?? -1) >= 0
         ? limits.get(branch.id) : DEFAULT_LIMIT,
+      blastSentThisMonth: usageMap.get(branch.id)?.sentThisMonth ?? 0,
+      blastRemaining: usageMap.get(branch.id)?.remaining ?? DEFAULT_LIMIT,
     })),
     audit: audit ?? [],
   })

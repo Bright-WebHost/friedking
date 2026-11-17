@@ -362,12 +362,12 @@ export function printReceipt(o: DOrder, branch: DBranch, settings: Record<Settin
   return printHtml(`#${o.order_number}`, `
     <h2>FRIED KING</h2><div class="c">${esc(branch.name)}${branch.address ? `<br>${esc(branch.address)}` : ''}${branch.phone ? `<br>${esc(branch.phone)}` : ''}</div>
     ${settings.gstin ? `<div class="c">GSTIN ${esc(settings.gstin)}</div>` : ''}
-    <hr><div class="r"><span>#${o.order_number}</span><span>${esc(typeLabel(o.order_type))}${o.table_number ? ` · T${o.table_number}` : ''}</span></div><div>${ist(o.created_at)}</div>
+    <hr><div class="r"><span>Token No: ${o.token_number ?? '—'}</span><span>Bill No: ${o.order_number}</span></div><div class="r"><span>${esc(typeLabel(o.order_type))}${o.table_number ? ` · T${o.table_number}` : ''}</span><span>${ist(o.created_at)}</span></div>
     <div>${esc(customerName(o))} · ${esc(phoneShort(o.customer?.phone))}</div>${o.delivery_address ? `<div>${esc(o.delivery_address)}</div>` : ''}
     <hr>${lines}
     <hr><div class="r"><span>Subtotal</span><span>${rs(o.subtotal_paise)}</span></div>
-    <div class="r"><span>CGST ${gstPct / 2}% (incl.)</span><span>${rs(o.gst_paise / 2)}</span></div>
-    <div class="r"><span>SGST ${gstPct / 2}% (incl.)</span><span>${rs(o.gst_paise / 2)}</span></div>
+    <div class="r"><span>CGST ${gstPct / 2}%</span><span>${rs(Math.floor(o.gst_paise / 2))}</span></div>
+    <div class="r"><span>SGST ${gstPct / 2}%</span><span>${rs(o.gst_paise - Math.floor(o.gst_paise / 2))}</span></div>
     ${o.order_type === 'delivery' && o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise) > 0 ? `<div class="r"><span>Delivery fee</span><span>${rs(o.total_paise - (o.subtotal_paise - o.discount_paise - o.loyalty_discount_paise + o.gst_paise))}</span></div>` : ''}
     ${o.discount_paise ? `<div class="r"><span>Discount</span><span>−${rs(o.discount_paise)}</span></div>` : ''}
     ${o.loyalty_discount_paise ? `<div class="r"><span>Points (${o.loyalty_points_redeemed})</span><span>−${rs(o.loyalty_discount_paise)}</span></div>` : ''}
@@ -376,6 +376,15 @@ export function printReceipt(o: DOrder, branch: DBranch, settings: Record<Settin
     ${o.taken_by ? `<div>Order by ${esc(o.taken_by)}</div>` : ''}${o.payment_taken_by ? `<div>Cash: ${esc(o.payment_taken_by)}</div>` : ''}
     <div class="c" style="margin-top:9px">${o.cash_collected ? 'Paid' : `Pay ${o.order_type === 'delivery' ? 'on delivery' : 'at the counter'}`}</div>
     <hr><div class="c">${esc(settings.tagline || 'Thank you!')}</div>`)
+}
+
+export function printKOT(o: DOrder, branch: DBranch): boolean {
+  const lines = o.items.map((l) => `<div style="margin:8px 0"><div class="r"><b>${l.quantity} × ${esc(l.name_snapshot)}</b></div>${l.menu_item?.description ? `<div style="font-size:11px">${esc(l.menu_item.description)}</div>` : ''}${l.notes ? `<div style="font-size:11px"><b>Note:</b> ${esc(l.notes)}</div>` : ''}</div>`).join('')
+  return printHtml(`KOT ${o.order_number}`, `
+    <h2>KITCHEN ORDER TICKET</h2><div class="c">${esc(branch.name)}</div>
+    <hr><div class="r"><span>Token No: ${o.token_number ?? '—'}</span><span>Bill No: ${o.order_number}</span></div>
+    <div class="r"><span>${esc(typeLabel(o.order_type))}${o.table_number ? ` · T${o.table_number}` : ''}</span><span>${ist(o.created_at)}</span></div>
+    <hr>${lines}${o.special_instructions ? `<hr><b>Order note:</b> ${esc(o.special_instructions)}` : ''}`)
 }
 
 export function printTableQR(tableNumber: number, whatsapp: string): boolean {

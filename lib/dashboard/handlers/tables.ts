@@ -61,6 +61,7 @@ export const tablesHandler: Handler = {
         await emitOrderEvent(ctx, rounds[0].id, 'table_invoice_requested', {
           orderNumber: rounds[0].order_number, sessionId: s.id, tableNumber: s.table?.table_number ?? null,
           phone: phone ?? s.phone, totalPaise: amount, staff: ctx.staff.name,
+          customerNotification: { kind: 'table_closed', windowOnly: true, thankYou: true },
           rounds: rounds.map((o) => ({ orderNumber: o.order_number, totalPaise: o.total_paise, items: o.items })),
         })
       }

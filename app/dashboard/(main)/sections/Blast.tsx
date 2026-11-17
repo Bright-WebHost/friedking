@@ -56,8 +56,8 @@ export default function Blast() {
         <div className="stat"><span>Remaining</span><b style={{ color: capClr }}>{remaining}</b></div>
       </div>
       <div style={{ height: 6, borderRadius: 4, background: '#eee', overflow: 'hidden', margin: '-6px 0 14px' }}><div style={{ height: '100%', width: `${capPct}%`, background: capClr }} /></div>
-      {data.sentThisMonth >= data.cap ? <div className="err">⛔ Monthly blast cap reached ({data.cap}/{data.cap}). Sends resume on the 1st of next month.</div>
-        : remaining <= 100 ? <div className="note">⚠ Only {remaining} blast sends left this month (cap {data.cap}/month).</div> : null}
+      {data.sentThisMonth >= data.cap ? <div className="err">⛔ Monthly promotion cap reached ({data.cap}/{data.cap}). Sends resume on the 1st of next month.</div>
+        : remaining <= 100 ? <div className="note">⚠ Only {remaining} promotion sends left this month (cap {data.cap}/month).</div> : null}
       {phones.length
         ? <div className="selinfo" style={{ marginBottom: 12 }}>Sending to the {phones.length} contacts you picked. <button style={{ textDecoration: 'underline' }} onClick={() => setPhones([])}>Clear selection</button></div>
         : <div className="note">No contacts selected: this goes to the whole group below. <button style={{ textDecoration: 'underline' }} onClick={() => go('contacts')}>Pick contacts instead</button></div>}
@@ -80,10 +80,10 @@ export default function Blast() {
           <button style={{ textDecoration: 'underline' }} onClick={async () => { try { await api.post('blast', 'saveHeader', { url: hdr }); toast('Saved') } catch (e) { toast(e instanceof Error ? e.message : 'Could not save') } }}>Save without sending</button>
         </div>
         <div className="note">The template must already be approved in Meta. Messages are queued here and sent by n8n once WhatsApp (YCloud) is connected; nothing goes out from the dashboard directly.</div>
-        <button className="btn" disabled={busy || data.sentThisMonth >= data.cap} onClick={() => void send()}>{busy ? 'Queuing…' : 'Send blast'}</button>
+        <button className="btn" disabled={busy || data.sentThisMonth >= data.cap} onClick={() => void send()}>{busy ? 'Queuing…' : 'Send promotion'}</button>
         <div style={{ marginTop: 12 }}>{result}</div>
       </div>
-      {data.campaigns.length > 0 && <div className="anacard"><h4>Recent blasts</h4>
+      {data.campaigns.length > 0 && <div className="anacard"><h4>Recent promotions</h4>
         <div className="tblwrap"><table><thead><tr><th>When</th><th>Template</th><th>Audience</th><th>Recipients</th><th>Status</th><th>By</th></tr></thead><tbody>
           {data.campaigns.map((c) => <tr key={c.id}><td>{ist(c.created_at)}</td><td>{c.template_name}</td><td>{c.audience.replace('_', ' ')}</td><td>{c.recipient_count}</td><td>{c.status}</td><td>{c.created_by_name}</td></tr>)}
         </tbody></table></div></div>}
