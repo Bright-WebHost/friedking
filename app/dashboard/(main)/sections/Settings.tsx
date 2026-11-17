@@ -136,6 +136,8 @@ export default function Settings() {
       <div className="panel"><h3>Printing &amp; security</h3>
         <label className="avrow"><input type="checkbox" className="cbox" checked={st.auto_print === 'true'} onChange={(e) => setS({ ...st, auto_print: e.target.checked ? 'true' : 'false' })} /> Auto-print on accept (80 mm receipt)</label>
         {field('Undo passcode (managers enter it to move an order backwards or restore a cancelled one)', <input className="f" inputMode="numeric" maxLength={6} style={{ maxWidth: 160 }} value={st.undo_passcode} onChange={setSet('undo_passcode')} />)}
+        {field('Staff discount passcode', <input className="f" type="password" inputMode="numeric" maxLength={6} style={{ maxWidth: 160 }} value={st.discount_passcode} onChange={setSet('discount_passcode')} />)}
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Required before applying a staff discount. Default: 0000.</div>
       </div>
 
       <div className="panel"><h3>AI &amp; WhatsApp</h3>

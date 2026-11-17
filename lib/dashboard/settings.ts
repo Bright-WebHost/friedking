@@ -14,6 +14,7 @@ export const SETTING_DEFAULTS = {
   payment_methods: 'Cash or UPI at the counter or on delivery.',
   auto_print: 'false',
   undo_passcode: '0000',
+  discount_passcode: '0000',
   low_stock_threshold: '5',
   expiry_warn_days: '7',
   margin_alert_pct: '20',

@@ -352,7 +352,7 @@ body{font-family:Arial,sans-serif;padding:3mm 4mm;font-size:13px;width:72mm;max-
 .items{width:100%;border-collapse:collapse;font-size:12px}.items td,.items th{padding:3px 0;text-align:left;vertical-align:top}.items td:nth-child(2),.items th:nth-child(2){text-align:center;width:10mm}.items td:nth-child(3),.items th:nth-child(3),.items td:last-child,.items th:last-child{text-align:right;white-space:nowrap}
 .desc{font-size:11px;font-style:italic;padding:0 0 3px 4mm!important}.note{font-size:11px;padding:0 0 3px 4mm!important}
 .totals{margin-left:auto;width:48mm}.grand{font-weight:700;font-size:16px;margin-top:5px}.thanks{text-align:center;margin-top:9px;font-weight:700}
-.kot{break-before:page;page-break-before:always}.kot h2{font-size:17px;text-align:center;margin:0 0 4px}.kot .items td:first-child{font-weight:700;font-size:14px}.kot .items td:nth-child(2){font-weight:700;font-size:14px}
+.kot{break-before:page;page-break-before:always;padding-top:5mm}.kot h2{font-size:17px;text-align:center;margin:0 0 4px}.kot .items td:first-child{font-weight:700;font-size:14px}.kot .items td:nth-child(2){font-weight:700;font-size:14px}
 @media print{.kot{break-before:page;page-break-before:always}}`
 
 function printHtml(title: string, body: string) {

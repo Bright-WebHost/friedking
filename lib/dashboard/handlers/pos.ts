@@ -1,6 +1,6 @@
 import { calcTotals, normalizePhone } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
-import { audit, check, emitOrderEvent, HttpError, id, int, optStr, str, type Ctx } from '@/lib/dashboard/server'
+import { audit, check, emitOrderEvent, getSettings, HttpError, id, int, optStr, str, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
 /** Customers with order count, last order and loyalty balance (POS type-ahead, Contacts, Blast). */
@@ -103,6 +103,10 @@ export const posHandler: Handler = {
         ? (b.discountPaise ? int(b.discountPaise, 'discount', 0, totals.totalPaise) : 0)
         : Math.round(totals.totalPaise * discountPct / 100)
       if (discountPaise && !isBoss(ctx.staff.role)) throw new HttpError(403, 'Only a manager can give a discount')
+      if (discountPaise) {
+        const settings = await getSettings(ctx)
+        if (String(b.discountPasscode ?? '') !== settings.discount_passcode) throw new HttpError(403, 'Wrong discount passcode')
+      }
       const discountReason = discountPaise ? optStr(b.discountReason, 120) : null
 
       // Customer

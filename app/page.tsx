@@ -102,7 +102,8 @@ export default function CustomerPage() {
   // Set when the page was opened from the WhatsApp bot's link: name and number come from WhatsApp and are locked.
   const [linkToken, setLinkToken] = useState<string | null>(null)
   const [linked, setLinked] = useState<{ name: string; phoneMasked: string } | null>(null)
-  // Every order is confirmed with a WhatsApp OTP (see components/VerifyCard). enabled=false -> old manual number field.
+  const whatsappLinkContext = linkToken !== null || (typeof window !== 'undefined' && /^[0-9a-f]{32}$/.test(new URLSearchParams(window.location.search).get('t') ?? ''))
+  // External website orders use OTP when enabled; table orders use the table contact instead.
   const [vs, setVs] = useState<VerifyState>({ enabled: false, secret: '', verified: false })
   const [vsLoaded, setVsLoaded] = useState(false)
   const [verifyKey, setVerifyKey] = useState(0)
@@ -329,7 +330,7 @@ export default function CustomerPage() {
 
   const placeOrder = async () => {
     if (!branch || submitting) return
-    const dineIn = orderType === 'dine-in' && tableNo !== null
+    const dineIn = tableNo !== null
     const needVerify = vs.enabled && !dineIn && !linked
     const needPhoneField = dineIn ? !linked && !tableInfo?.hasContact : !linked && !needVerify
     const e164 = needPhoneField ? normalizePhone(phone) : ''
@@ -349,7 +350,7 @@ export default function CustomerPage() {
         customerPhone: e164 ?? '',
         linkToken: linked ? linkToken : null,
         verifySecret: needVerify ? vs.secret : null,
-        orderType,
+        orderType: dineIn ? 'dine-in' : orderType,
         tableNumber: dineIn ? tableNo : null,
         deliveryAddress: orderType === 'delivery' && addr ? addr.text : null,
         deliveryPincode: orderType === 'delivery' && addr ? addr.pincode : null,
@@ -575,8 +576,8 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              {!linked && orderType !== 'dine-in' && <VerifyCard key={verifyKey} linkToken={null} useSession={account.loggedIn} fixedMasked={account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
-              {!linked && orderType !== 'dine-in' && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
+              {!linked && tableNo === null && !whatsappLinkContext && <VerifyCard key={verifyKey} linkToken={null} useSession={account.loggedIn} fixedMasked={account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
+              {!linked && tableNo === null && !whatsappLinkContext && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
                   className="w-full bg-transparent px-3 py-3.5 text-base outline-none placeholder:text-fk-muted/70 sm:text-sm"

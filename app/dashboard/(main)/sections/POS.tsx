@@ -31,6 +31,7 @@ export default function POS() {
   const [redeemPts, setRedeemPts] = useState(0)
   const [discOn, setDiscOn] = useState(false)
   const [disc, setDisc] = useState('')
+  const [discountPasscode, setDiscountPasscode] = useState('')
   const [discReason, setDiscReason] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
   const [sending, setSending] = useState(false)
@@ -68,7 +69,7 @@ export default function POS() {
     setCart((c) => ({ ...c, [i.id]: Math.min(50, (c[i.id] ?? 0) + 1) }))
   }
   const dec = (id: string) => setCart((c) => { const n = (c[id] ?? 0) - 1; const x = { ...c }; if (n <= 0) delete x[id]; else x[id] = n; return x })
-  const clear = () => { setCart({}); setRedeemOn(false); setRedeemPts(0); setDiscOn(false); setDisc(''); setDiscReason('') }
+  const clear = () => { setCart({}); setRedeemOn(false); setRedeemPts(0); setDiscOn(false); setDisc(''); setDiscountPasscode(''); setDiscReason('') }
 
   const openTab = (() => {
     if (type !== 'dine-in' || !table.trim() || !tabs.data) return null
@@ -89,7 +90,7 @@ export default function POS() {
       const r = await api.post<{ orderId: string; orderNumber: number; totalPaise: number }>('pos', 'create', {
         phone: digits, name, orderType: type, address, pincode, tableNumber: type === 'dine-in' ? Number(table) : null,
         lines: lines.map((l) => ({ itemId: l.item.id, quantity: l.qty })),
-        redeemPoints: pts, discountPct: discountPct || undefined, discountReason: discReason,
+        redeemPoints: pts, discountPct: discountPct || undefined, discountPasscode: discountPct ? discountPasscode : undefined, discountReason: discReason,
       })
       toast(`#${r.orderNumber} sent to the kitchen`)
       if (settings.auto_print === 'true') {
@@ -211,6 +212,7 @@ export default function POS() {
                 <button className={`btn ${disc && ![5, 10, 20].includes(Number(disc)) ? 'on' : 'ghost'}`} onClick={() => setDisc('0')}>Custom</button>
               </div>
               {disc && ![5, 10, 20].includes(Number(disc)) && <input className="f2" type="number" min={0} max={100} placeholder="Custom percentage" value={disc} onChange={(e) => setDisc(e.target.value)} style={{ margin: 0 }} />}
+                {discountPct > 0 && <input className="f2" type="password" inputMode="numeric" maxLength={6} placeholder="Discount passcode" value={discountPasscode} onChange={(e) => setDiscountPasscode(e.target.value.replace(/\D/g, ''))} style={{ margin: 0 }} />}
               <input className="f2" placeholder="Reason" value={discReason} onChange={(e) => setDiscReason(e.target.value)} style={{ margin: 0 }} />
             </div>}
           </div>}
