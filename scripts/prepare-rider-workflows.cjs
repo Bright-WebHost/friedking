@@ -1,14 +1,15 @@
 /** Prepare reviewed n8n exports; never calls or changes the live workflows.
  * Input: fresh <workflow-id>-before.json exports from the n8n API.
- * Usage: node scripts/prepare-rider-workflows.cjs <input-directory> [output-directory]
+ * Usage: node scripts/prepare-rider-workflows.cjs <input-directory> <output-directory> <callback-credential-id>
  * Deploy the app endpoint before importing/publishing these exports. See docs/RIDER_PAYMENT.md.
  */
 const fs = require('node:fs');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { randomUUID } = require('node:crypto');
-const [inputDirectory, outputDirectory] = process.argv.slice(2);
-assert.ok(inputDirectory, 'Usage: node scripts/prepare-rider-workflows.cjs <input-directory> [output-directory]');
+const { configureRiderPayment } = require('./rider-payment-workflow.cjs');
+const [inputDirectory, outputDirectory, callbackCredentialId] = process.argv.slice(2);
+assert.ok(inputDirectory && callbackCredentialId, 'Usage: node scripts/prepare-rider-workflows.cjs <input-directory> <output-directory> <callback-credential-id>');
 const dir = path.resolve(inputDirectory);
 const output = path.resolve(outputDirectory || inputDirectory);
 fs.mkdirSync(output, { recursive: true });
@@ -80,12 +81,8 @@ if ((inp.msg_type === 'button' || inp.msg_type === 'interactive') && (riderPayme
 
 // staff has taken over`);
 node(main,'Route').parameters.jsCode=route;
-const payment=node(main,'Rider Confirm Payment');payment.parameters.url='https://friedking.vercel.app/api/rider/payment';payment.parameters.jsonBody="={{ JSON.stringify({ branchSlug: 'pandeshwar', riderPhone: $json.customer_phone, orderId: $json.payment_order_id || null, messageId: $json.context_id || null }) }}";payment.onError='continueRegularOutput';
-let reply=node(main,'Build Rider Payment Reply').parameters.jsCode;
-reply=replace(reply,"' has been marked as collected.'","' has been recorded and the order is marked Done.'");
-reply=replace(reply,"' was already marked as payment collected. Thanks!'","' is already marked Done and paid. Thanks!'");
-reply=replace(reply,"} else {\n  msg = 'Could not find a delivery matching that message. Please check with the restaurant if this was a mistake.';", "} else if (r.result === 'cancelled') {\n  msg = 'This delivery was cancelled. Please contact the restaurant about this payment.';\n} else if (r.result === 'not_found') {\n  msg = 'This delivery could not be matched to your rider number. Please contact the restaurant.';\n} else {\n  msg = 'We could not confirm that payment yet. Please tap Payment collected again or contact the restaurant.';");
-node(main,'Build Rider Payment Reply').parameters.jsCode=reply;
+const payment=node(main,'Rider Confirm Payment');payment.parameters.url='https://friedking.vercel.app/api/rider/payment';payment.parameters.jsonBody="={{ JSON.stringify({ branchSlug: 'pandeshwar', riderPhone: $json.customer_phone, orderId: $json.payment_order_id || null, messageId: $json.context_id || null }) }}";
+configureRiderPayment(main, callbackCredentialId);
 const status=node(main,'Update Rider Notify Status');status.parameters.queryParameters={parameters:[{name:'or',value:"={{ '(rider_wa_message_id.eq.' + $json.status_id + ($json.wamid ? ',rider_wa_message_id.eq.' + $json.wamid : '') + ')' }}"}]};status.parameters.jsonBody="={{ JSON.stringify(Object.assign({ rider_notify_status: $json.status }, $json.wamid ? { rider_wa_message_id: $json.wamid } : {})) }}";
 for(const workflow of [main,events]){for(const item of workflow.nodes)if(item.parameters.jsCode)new Function(item.parameters.jsCode);fs.writeFileSync(path.join(output,workflow.id+'-after.json'),JSON.stringify(workflow,null,2));}
 console.log('Prepared Main and Order Events exports in ' + output);
