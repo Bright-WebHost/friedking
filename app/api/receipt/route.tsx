@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 
 const RED = '#d62300'
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-const W = 840
+const W = 1080
 const rs = (paise: number) => `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2 })}`
 
 /** Poppins from public/fonts: read from disk, or fetched from our own site if the file is not bundled. */
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
     const summary: Array<[string, string]> = [['Item total', rs(order.subtotal_paise)]]
     if (order.discount_paise > 0) summary.push(['Discount', `-${rs(order.discount_paise)}`])
     if (order.loyalty_discount_paise > 0) summary.push(['Reward points', `-${rs(order.loyalty_discount_paise)}`])
-    summary.push(['GST (CGST + SGST)', rs(order.gst_paise)])
+    summary.push(['GST included (CGST + SGST)', rs(order.gst_paise)])
     // Delivery fee = whatever the total has beyond items, GST and discounts (no extra column needed).
     const fee = order.total_paise - (order.subtotal_paise - order.discount_paise - order.loyalty_discount_paise + order.gst_paise)
     if (order.order_type === 'delivery' && fee > 0) summary.push(['Delivery fee', rs(fee)])
@@ -113,68 +113,68 @@ export async function GET(request: NextRequest) {
     const detailH = detail.reduce((h, [, v]) => h + 14 + 46 * wrapLines(v, 26), 0)
     const itemsH = items.reduce((h, it) => h + 92 + (it.notes ? 40 * wrapLines(it.notes, 44) : 0), 0)
     const addrLines = branch?.address ? wrapLines(branch.address, 48) : 0
-    const height = 420 + addrLines * 36 + 42 + 320 + detailH + itemsH + summary.length * 40 + 90 + 130 + (s.gstin ? 30 : 0)
+    const height = 300 + addrLines * 30 + 30 + 230 + detailH + itemsH + summary.length * 34 + 70 + 100 + (s.gstin ? 26 : 0)
 
     return new ImageResponse(
       (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff', fontFamily: 'Poppins' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '32px 48px 28px' }}>
-            <img src={logo} alt="Fried King" style={{ width: 240, height: 72, objectFit: 'contain' }} />
-            {branch?.address ? <span style={{ fontSize: 24, color: '#ffffff', marginTop: 14, textAlign: 'center', lineHeight: 1.4 }}>{branch.address}</span> : null}
-            {phone ? <span style={{ fontSize: 24, color: '#ffffff', marginTop: 4 }}>{phone}</span> : null}
-            {s.gstin ? <span style={{ fontSize: 21, color: '#ffe0dc', marginTop: 8 }}>GSTIN: {s.gstin}</span> : null}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '22px 40px 18px' }}>
+            <img src={logo} alt="Fried King" style={{ width: 210, height: 58, objectFit: 'contain' }} />
+            {branch?.address ? <span style={{ fontSize: 21, color: '#ffffff', marginTop: 9, textAlign: 'center', lineHeight: 1.3 }}>{branch.address}</span> : null}
+            {phone ? <span style={{ fontSize: 21, color: '#ffffff', marginTop: 2 }}>{phone}</span> : null}
+            {s.gstin ? <span style={{ fontSize: 18, color: '#ffe0dc', marginTop: 5 }}>GSTIN: {s.gstin}</span> : null}
           </div>
           {checker(false)}
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '46px 48px 0' }}>
-            <span style={{ fontSize: 72, fontWeight: 700, color: '#1c1c1c', letterSpacing: 6 }}>{isTable ? `TABLE ${order.table_number ?? ''}` : `FK-${order.order_number}`}</span>
-            <span style={{ fontSize: 28, color: '#8a8a8a', marginTop: 8 }}>{when}</span>
-            <div style={{ display: 'flex', marginTop: 30, color: RED, fontSize: 30, fontWeight: 700, letterSpacing: 2, padding: '14px 44px', borderRadius: 999, border: `5px solid ${RED}` }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 40px 0' }}>
+            <span style={{ fontSize: 54, fontWeight: 700, color: '#1c1c1c', letterSpacing: 4 }}>{isTable ? `TABLE ${order.table_number ?? ''}` : `FK-${order.order_number}`}</span>
+            <span style={{ fontSize: 22, color: '#8a8a8a', marginTop: 4 }}>{when}</span>
+            <div style={{ display: 'flex', marginTop: 16, color: RED, fontSize: 23, fontWeight: 700, letterSpacing: 1, padding: '9px 30px', borderRadius: 999, border: `4px solid ${RED}` }}>
               {typeLabel} · {payLabel}
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', padding: '0 48px', marginTop: 40 }}>
-            <div style={{ display: 'flex', borderTop: '3px dashed #f2b8ae', marginBottom: 22 }} />
+          <div style={{ display: 'flex', flexDirection: 'column', padding: '0 40px', marginTop: 24 }}>
+            <div style={{ display: 'flex', borderTop: '2px dashed #f2b8ae', marginBottom: 14 }} />
             {detail.map(([k, v]) => (
               <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-                <span style={{ fontSize: 31, color: '#8a8a8a' }}>{k}</span>
-                <span style={{ fontSize: 31, fontWeight: 600, color: '#1c1c1c', textAlign: 'right', maxWidth: 520 }}>{v}</span>
+                <span style={{ fontSize: 23, color: '#8a8a8a' }}>{k}</span>
+                <span style={{ fontSize: 23, fontWeight: 600, color: '#1c1c1c', textAlign: 'right', maxWidth: 680 }}>{v}</span>
               </div>
             ))}
-            <div style={{ display: 'flex', borderTop: '3px dashed #f2b8ae', margin: '14px 0 22px' }} />
+            <div style={{ display: 'flex', borderTop: '2px dashed #f2b8ae', margin: '10px 0 14px' }} />
 
             {items.map((it, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: '2px dashed #f2c7bf', padding: '14px 0 16px' }}>
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: '2px dashed #f2c7bf', padding: '9px 0 10px' }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', flex: 1, fontSize: 34, fontWeight: 600, color: '#1c1c1c' }}>{it.name_snapshot}</span>
-                  <span style={{ display: 'flex', width: 90, justifyContent: 'center', fontSize: 31, color: '#8a8a8a' }}>x{it.quantity}</span>
-                  <span style={{ display: 'flex', width: 170, justifyContent: 'flex-end', fontSize: 34, fontWeight: 700, color: '#1c1c1c' }}>{rs(it.line_total_paise)}</span>
+                  <span style={{ display: 'flex', flex: 1, fontSize: 26, fontWeight: 600, color: '#1c1c1c' }}>{it.name_snapshot}</span>
+                  <span style={{ display: 'flex', width: 80, justifyContent: 'center', fontSize: 23, color: '#8a8a8a' }}>x{it.quantity}</span>
+                  <span style={{ display: 'flex', width: 160, justifyContent: 'flex-end', fontSize: 26, fontWeight: 700, color: '#1c1c1c' }}>{rs(it.line_total_paise)}</span>
                 </div>
-                {it.notes ? <span style={{ fontSize: 26, color: RED, marginTop: 6 }}>Note: {it.notes}</span> : null}
+                {it.notes ? <span style={{ fontSize: 20, color: RED, marginTop: 4 }}>Note: {it.notes}</span> : null}
               </div>
             ))}
 
-            <div style={{ display: 'flex', flexDirection: 'column', margin: '22px 0 26px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', margin: '14px 0 18px' }}>
               {summary.map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 27, color: '#8a8a8a' }}>{k}</span>
-                  <span style={{ fontSize: 27, color: '#5a5a5a' }}>{v}</span>
+                  <span style={{ fontSize: 21, color: '#8a8a8a' }}>{k}</span>
+                  <span style={{ fontSize: 21, color: '#5a5a5a' }}>{v}</span>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: RED, borderRadius: 30, padding: '34px 44px' }}>
-              <span style={{ fontSize: 30, color: '#ffffff', letterSpacing: 7 }}>TOTAL</span>
-              <span style={{ fontSize: 76, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: RED, borderRadius: 24, padding: '22px 32px' }}>
+              <span style={{ fontSize: 24, color: '#ffffff', letterSpacing: 5 }}>TOTAL</span>
+              <span style={{ fontSize: 56, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, justifyContent: 'center', padding: '34px 48px', textAlign: 'center' }}>
-            <div style={{ display: 'flex', fontSize: 31, color: '#5a5a5a' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, justifyContent: 'center', padding: '24px 40px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', fontSize: 24, color: '#5a5a5a' }}>
               Thank you for ordering with <span style={{ color: RED, fontWeight: 700, marginLeft: 10 }}>Fried King</span>!
             </div>
-            {phone ? <span style={{ fontSize: 28, color: '#5a5a5a', marginTop: 8 }}>Questions? WhatsApp us on {phone}</span> : null}
+            {phone ? <span style={{ fontSize: 21, color: '#5a5a5a', marginTop: 5 }}>Questions? WhatsApp us on {phone}</span> : null}
           </div>
           {checker(true)}
         </div>

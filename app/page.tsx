@@ -677,7 +677,7 @@ export default function CustomerPage() {
             <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} />
             {offerPaise > 0 && cart.length > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mt-3" />}
             {minOrderShort > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-800">Add {formatPrice(minOrderShort)} more to reach the minimum delivery order.</p>}
-            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-fk-muted"><span aria-hidden>💵</span> Pay by cash {orderType === 'delivery' ? 'on delivery' : orderType === 'dine-in' ? 'at the counter' : 'at the counter'}. Nothing is charged online.</p>
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-fk-muted"><span aria-hidden>💵</span> Pay by cash {orderType === 'delivery' ? 'on delivery' : orderType === 'dine-in' ? 'at the counter' : 'at the counter'}. Prices include GST.</p>
           </Card>
 
           {formError && (
@@ -1042,6 +1042,7 @@ export default function CustomerPage() {
       )}
       {celebrate && <Celebration onDone={() => setCelebrate(false)} />}
       {accountOpen && <AccountPanel account={account} onClose={() => setAccountOpen(false)} onChanged={loadAccount} />}
+      <LoopdotFooter />
     </div>
   )
 }
@@ -1287,7 +1288,7 @@ function TotalsBlock({ subtotalPaise, gstPaise, totalPaise, deliveryFeePaise = 0
   return (
     <dl className="mt-3 space-y-1.5 border-t border-dashed border-fk-line pt-3 text-sm">
       <div className="flex justify-between"><dt className="text-fk-muted">Subtotal</dt><dd>{formatPrice(subtotalPaise)}</dd></div>
-      <div className="flex justify-between"><dt className="text-fk-muted">GST (5%)</dt><dd>{formatPrice(gstPaise)}</dd></div>
+      <div className="flex justify-between"><dt className="text-fk-muted">GST included (5%)</dt><dd>{formatPrice(gstPaise)}</dd></div>
       {baseFeePaise > 0 && (
         <div className="flex justify-between">
           <dt className="text-fk-muted">Delivery fee</dt>
@@ -1350,6 +1351,10 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
       {children}
     </section>
   )
+}
+
+function LoopdotFooter() {
+  return <footer className="px-4 pb-6 pt-3 text-center text-xs font-medium text-fk-muted">Powered by Loopdot</footer>
 }
 
 function Spinner({ label }: { label: string }) {

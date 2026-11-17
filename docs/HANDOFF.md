@@ -89,7 +89,7 @@ Outbox events written: `order_created` (website, POS, bot), `order_status_change
 
 ## 7. Rules and gotchas learned the hard way
 
-- Money is integer paise everywhere; GST 5% is added on top of menu prices (the client has not confirmed whether prices already include GST). Server is the source of truth for prices.
+- Money is integer paise everywhere; menu prices include 5% GST, which is extracted from the inclusive total. Server is the source of truth for prices.
 - Phones are `+91XXXXXXXXXX` in the database; WhatsApp ids are digits.
 - `orders.status` enum: `draft` (WhatsApp, unconfirmed), `pending` (= new, awaiting accept), `confirmed` (unused), `preparing`, `ready`, `delivered`, `cancelled`. Dashboard queries filter by the real statuses so they work even before `draft` exists. Drafts must never reach the dashboard.
 - Changing a Postgres function's signature: `drop function if exists` the old one first, otherwise PostgREST sees two overloads and fails. `alter type ... add value` and using the new value in the same transaction fails; use plpgsql so function bodies are not checked at creation.
@@ -102,5 +102,5 @@ Outbox events written: `order_created` (website, POS, bot), `order_status_change
 ## 8. Open decisions (do not guess, ask Maithri)
 
 - The client's official WhatsApp number is in use for their business, so it cannot be connected to the bot. Options discussed: (1) keep a separate dedicated number for the bot (recommended), (2) link "Order online" to that number from the official one, (3) move the official number (not recommended). Nothing decided yet.
-- Do menu prices already include GST? Delivery rules (fee, minimum, pincodes) per branch.
+- Delivery rules (fee, minimum, pincodes) per branch.
 - Real opening hours per branch.

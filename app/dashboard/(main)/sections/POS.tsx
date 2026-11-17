@@ -209,7 +209,7 @@ export default function POS() {
               <input className="f2" placeholder="Reason" value={discReason} onChange={(e) => setDiscReason(e.target.value)} style={{ margin: 0 }} />
             </div>}
           </div>}
-          <div className="li" style={{ marginBottom: 2 }}><span>Subtotal + 5% GST</span><span>{rs(totals.totalPaise)}</span></div>
+          <div className="li" style={{ marginBottom: 2 }}><span>Total (incl. 5% GST)</span><span>{rs(totals.totalPaise)}</span></div>
           <div className="ctot"><span>Total</span><span>{rs(finalTotal)}</span></div>
           <button className="cta" disabled={!lines.length || sending} onClick={() => void submit()}>{sending ? 'Sending…' : type === 'dine-in' ? 'Send to kitchen 🚀' : 'Place order 🚀'}</button>
         </div>

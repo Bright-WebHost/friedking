@@ -568,6 +568,14 @@
   @media (max-width: 1180px) {
     & .board { grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(252px, 1fr); overflow-x: auto; padding-bottom: 10px; }
   }
+
+  .dash-foot {
+    padding: 18px 20px 24px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+  }
   @media (max-width: 1100px) {
     & .pos { grid-template-columns: minmax(0, 1fr); }
     & .catrail { position: static; flex-direction: row; overflow-x: auto; max-height: none; gap: 7px; }

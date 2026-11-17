@@ -81,7 +81,7 @@ export default function Settings() {
           <div style={{ flex: 1 }}>{field('GST %', <input className="f" inputMode="decimal" value={st.gst_percent} onChange={setSet('gst_percent')} />)}</div>
           <div style={{ flex: 2 }}>{field('GSTIN (registration number)', <input className="f" value={st.gstin} onChange={setSet('gstin')} placeholder="29ABCDE1234F1Z5" />)}</div>
         </div>
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Shown as the CGST/SGST split on printed bills. Order totals currently add 5% GST on top of menu prices (waiting on the client to confirm whether prices already include GST).</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Shown as the CGST/SGST split on printed bills. Menu prices already include GST, so it is extracted from the total rather than added on top.</div>
       </div>
 
       <div className="panel"><h3>Hours</h3>
@@ -107,7 +107,7 @@ export default function Settings() {
         </label>
         {st.free_delivery_enabled === 'true' && (
           <div style={{ marginTop: 8 }}>
-            {field('Delivery is free when the food total (before GST) is at least (₹)', <input className="f" inputMode="numeric" value={st.free_delivery_above} onChange={setSet('free_delivery_above')} />)}
+            {field('Delivery is free when the food total (incl. GST) is at least (₹)', <input className="f" inputMode="numeric" value={st.free_delivery_above} onChange={setSet('free_delivery_above')} />)}
             {(!Number(st.delivery_fee) || !Number(st.free_delivery_above)) && <div style={{ fontSize: 12, color: 'var(--red)' }}>The offer only works when both the delivery fee and this amount are above 0.</div>}
           </div>
         )}

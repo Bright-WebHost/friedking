@@ -205,6 +205,7 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
               : (
                 <DashContext.Provider value={dash}>
                   {children}
+                  <footer className="dash-foot">Powered by Loopdot</footer>
                   <NewOrderAlert onNew={(o) => { notify(o); if (soundOn) chime() }} sirenBeat={() => { if (soundOn) sirenBeat() }} />
                   <Toaster msg={toastMsg} />
                 </DashContext.Provider>
