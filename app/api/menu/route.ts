@@ -82,6 +82,6 @@ export async function GET(req: NextRequest) {
     .filter((c) => used.has(c.id))
     .map((c) => ({ id: c.id, name: c.name }))
 
-  // Same for every customer: cached at the edge for 5 s, so a name or price edited in the dashboard shows up almost at once, so most visits never touch the database.
-  return NextResponse.json({ branch, categories, items }, { headers: { 'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=10' } })
+  // Same for every customer: cached at the edge for a minute, with stale data served while refreshing.
+  return NextResponse.json({ branch, categories, items }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } })
 }

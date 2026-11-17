@@ -13,6 +13,7 @@ import TableTab, { type TableInfo } from '@/components/TableTab'
 import { Celebration, FreeDeliveryProgress } from '@/components/FreeDelivery'
 import { joinAddress, parseAddress, type DeliveryAddress } from '@/lib/address'
 import { deliveryFeeFor, type DeliveryRules } from '@/lib/delivery'
+import { optimizeImageUrl } from '@/lib/image'
 import type {
   Branch, CartItem, MenuCategory, MenuItem, OrderType, PaymentMethod, PlaceOrderPayload, PlacedOrder,
 } from '@/lib/types'
@@ -641,7 +642,7 @@ export default function CustomerPage() {
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-fk-tint">
                       {item.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={item.imageUrl} alt="" className="h-full w-full object-cover" />
+                        <img src={optimizeImageUrl(item.imageUrl, 180) ?? ''} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                       ) : (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src="/brand/mark-red.png" alt="" className="h-full w-full object-contain p-3 opacity-70" />
@@ -804,7 +805,7 @@ export default function CustomerPage() {
                   <span className={`h-16 w-16 overflow-hidden rounded-full bg-fk-tint ${active ? 'border-2 border-fk-red p-0.5' : 'border-2 border-transparent'}`}>
                     {preview?.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={preview.imageUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                      <img src={optimizeImageUrl(preview.imageUrl, 160) ?? ''} alt="" loading="lazy" decoding="async" className="h-full w-full rounded-full object-cover" />
                     ) : (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src="/brand/mark-red.png" alt="" className="h-full w-full rounded-full object-contain p-4 opacity-70" />
@@ -1068,7 +1069,7 @@ function OfferBanner({ promotions }: { promotions: Promotion[] }) {
       <div className="relative aspect-[2/1] w-full">
         {promotion?.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={promotion.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={optimizeImageUrl(promotion.image_url, 900) ?? ''} alt="" fetchPriority="high" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <>
             <div className="absolute inset-0 bg-gradient-to-br from-fk-ink via-fk-ink to-fk-red" />
@@ -1123,7 +1124,7 @@ function ProductCard({
         }`}>
           {item.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.imageUrl} alt={item.name} loading="lazy" className="h-full w-full object-cover transition duration-500 hover:scale-105" />
+            <img src={optimizeImageUrl(item.imageUrl, compact ? 300 : 480) ?? ''} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-cover transition duration-500 hover:scale-105" />
           ) : (
             // Placeholder until menu photos are uploaded.
             // eslint-disable-next-line @next/next/no-img-element
@@ -1205,7 +1206,7 @@ function ItemDetailsModal({
         <div className="aspect-[4/3] bg-fk-tint">
           {item.imageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" />
+            <img src={optimizeImageUrl(item.imageUrl, 800) ?? ''} alt={item.name} decoding="async" className="h-full w-full object-cover" />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src="/brand/mark-red.png" alt="" className="mx-auto h-full w-[35%] object-contain opacity-80" />
