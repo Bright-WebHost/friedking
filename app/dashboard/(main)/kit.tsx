@@ -352,8 +352,8 @@ body{font-family:Arial,sans-serif;padding:3mm 4mm;font-size:13px;width:72mm;max-
 .items{width:100%;border-collapse:collapse;font-size:12px}.items td,.items th{padding:3px 0;text-align:left;vertical-align:top}.items td:nth-child(2),.items th:nth-child(2){text-align:center;width:10mm}.items td:nth-child(3),.items th:nth-child(3),.items td:last-child,.items th:last-child{text-align:right;white-space:nowrap}
 .desc{font-size:11px;font-style:italic;padding:0 0 3px 4mm!important}.note{font-size:11px;padding:0 0 3px 4mm!important}
 .totals{margin-left:auto;width:48mm}.grand{font-weight:700;font-size:16px;margin-top:5px}.thanks{text-align:center;margin-top:9px;font-weight:700}
-.kot{break-before:page;page-break-before:always;padding-top:5mm}.kot h2{font-size:17px;text-align:center;margin:0 0 4px}.kot .items td:first-child{font-weight:700;font-size:14px}.kot .items td:nth-child(2){font-weight:700;font-size:14px}
-@media print{.kot{break-before:page;page-break-before:always}}`
+.bill{break-after:page;page-break-after:always}.kot{display:block;break-before:page;page-break-before:always;padding-top:5mm}.kot h2{font-size:17px;text-align:center;margin:0 0 4px}.kot .items td:first-child{font-weight:700;font-size:14px}.kot .items td:nth-child(2){font-weight:700;font-size:14px}
+@media print{.bill{break-after:page;page-break-after:always}.kot{break-before:page;page-break-before:always}}`
 
 function printHtml(title: string, body: string) {
   const w = window.open('', '_blank', 'width=380,height=640')
@@ -363,7 +363,7 @@ function printHtml(title: string, body: string) {
   return true
 }
 
-const plainRs = (paise: number) => (paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const plainRs = (paise: number) => Math.round(paise / 100).toLocaleString('en-IN')
 const printType = (type: DOrder['order_type']) => type === 'delivery' ? 'Delivery' : type === 'dine-in' ? 'Dine In' : 'Pick Up'
 function printDate(iso: string) {
   const date = new Date(iso)

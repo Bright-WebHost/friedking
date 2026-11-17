@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
 
     // Dine-in: attach to the open tab of the table (or open it). No OTP: the customer is sitting at the table.
     let sessionId: string | null = null
+    let tableHasPreviousRounds = false
     if (isDineIn) {
       const table = await findTable(supabase, branch.id, tableNumber)
       if (!table) return bad(`Table ${tableNumber} was not found. Please ask the staff.`, 404)
@@ -154,6 +155,7 @@ export async function POST(req: NextRequest) {
       if (open) {
         const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('table_session_id', open.id)
         if ((count ?? 0) >= MAX_ROUNDS_PER_TABLE) return bad('This table has too many orders. Please ask the staff.', 429)
+        tableHasPreviousRounds = (count ?? 0) > 0
         const sessionPhone = open.phone ?? phone
         if (!open.phone || !open.customer_name) {
           await supabase.from('table_sessions').update({ phone: sessionPhone, customer_name: open.customer_name ?? name }).eq('id', open.id)
@@ -254,7 +256,7 @@ export async function POST(req: NextRequest) {
         items: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPricePaise: l.pricePaise })),
         ...totals,
         totalPaise: grandTotalPaise,
-        ...(sessionId ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: grandTotalPaise, tableRunningTotalPaise } } : {}),
+        ...(sessionId && tableHasPreviousRounds ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: grandTotalPaise, tableRunningTotalPaise } } : {}),
       },
     })
     if (eventErr) console.error('[POST /api/order] order_events (order still placed):', eventErr.message)

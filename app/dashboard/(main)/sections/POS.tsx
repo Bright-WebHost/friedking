@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { calcTotals } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
 import type { DCategory, DCustomer, DMenuItem, DOrder, DProgram, DSession, DTable } from '@/lib/dashboard/types'
-import { Img, Loading, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
+import { Img, Loading, Modal, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
 
 const PER_CAT = 8
 type OType = 'pickup' | 'delivery' | 'dine-in'
@@ -32,7 +32,7 @@ export default function POS() {
   const [discOn, setDiscOn] = useState(false)
   const [disc, setDisc] = useState('')
   const [discountPasscode, setDiscountPasscode] = useState('')
-  const [discReason, setDiscReason] = useState('')
+  const [discountModal, setDiscountModal] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const [bad, setBad] = useState('')
@@ -69,7 +69,7 @@ export default function POS() {
     setCart((c) => ({ ...c, [i.id]: Math.min(50, (c[i.id] ?? 0) + 1) }))
   }
   const dec = (id: string) => setCart((c) => { const n = (c[id] ?? 0) - 1; const x = { ...c }; if (n <= 0) delete x[id]; else x[id] = n; return x })
-  const clear = () => { setCart({}); setRedeemOn(false); setRedeemPts(0); setDiscOn(false); setDisc(''); setDiscountPasscode(''); setDiscReason('') }
+  const clear = () => { setCart({}); setRedeemOn(false); setRedeemPts(0); setDiscOn(false); setDisc(''); setDiscountPasscode(''); setDiscountModal(false) }
 
   const openTab = (() => {
     if (type !== 'dine-in' || !table.trim() || !tabs.data) return null
@@ -90,7 +90,7 @@ export default function POS() {
       const r = await api.post<{ orderId: string; orderNumber: number; totalPaise: number }>('pos', 'create', {
         phone: digits, name, orderType: type, address, pincode, tableNumber: type === 'dine-in' ? Number(table) : null,
         lines: lines.map((l) => ({ itemId: l.item.id, quantity: l.qty })),
-        redeemPoints: pts, discountPct: discountPct || undefined, discountPasscode: discountPct ? discountPasscode : undefined, discountReason: discReason,
+        redeemPoints: pts, discountPct: discountPct || undefined, discountPasscode: discountPct ? discountPasscode : undefined,
       })
       toast(`#${r.orderNumber} sent to the kitchen`)
       if (settings.auto_print === 'true') {
@@ -142,6 +142,7 @@ export default function POS() {
   }
 
   return (
+    <>
     <div className="pos">
       <div className="catrail">
         <button aria-pressed={cat === 'All'} onClick={() => { setCat('All'); setQ('') }}><span className="cn">All dishes</span><span className="ct">{items.length}</span></button>
@@ -212,15 +213,23 @@ export default function POS() {
                 <button className={`btn ${disc && ![5, 10, 20].includes(Number(disc)) ? 'on' : 'ghost'}`} onClick={() => setDisc('0')}>Custom</button>
               </div>
               {disc && ![5, 10, 20].includes(Number(disc)) && <input className="f2" type="number" min={0} max={100} placeholder="Custom percentage" value={disc} onChange={(e) => setDisc(e.target.value)} style={{ margin: 0 }} />}
-                {discountPct > 0 && <input className="f2" type="password" inputMode="numeric" maxLength={6} placeholder="Discount passcode" value={discountPasscode} onChange={(e) => setDiscountPasscode(e.target.value.replace(/\D/g, ''))} style={{ margin: 0 }} />}
-              <input className="f2" placeholder="Reason" value={discReason} onChange={(e) => setDiscReason(e.target.value)} style={{ margin: 0 }} />
             </div>}
           </div>}
           <div className="li" style={{ marginBottom: 2 }}><span>Total (incl. 5% GST)</span><span>{rs(totals.totalPaise)}</span></div>
           <div className="ctot"><span>Total</span><span>{rs(finalTotal)}</span></div>
-          <button className="cta" disabled={!lines.length || sending} onClick={() => void submit()}>{sending ? 'Sending…' : type === 'dine-in' ? 'Send to kitchen 🚀' : 'Place order 🚀'}</button>
+          <button className="cta" disabled={!lines.length || sending} onClick={() => { if (discountPct > 0) { setDiscountPasscode(''); setDiscountModal(true) } else void submit() }}>{sending ? 'Sending…' : type === 'dine-in' ? 'Send to kitchen 🚀' : 'Place order 🚀'}</button>
         </div>
       </div>
     </div>
+    {discountModal && <Modal onClose={() => setDiscountModal(false)}>
+      <h3>Enter discount passcode</h3>
+      <p>Enter the passcode to apply this staff discount.</p>
+      <input autoFocus className="f2" type="password" inputMode="numeric" maxLength={6} placeholder="Passcode" value={discountPasscode} onChange={(e) => setDiscountPasscode(e.target.value.replace(/\D/g, ''))} />
+      <div className="mrow">
+        <button onClick={() => setDiscountModal(false)}>Cancel</button>
+        <button className="ok" onClick={() => { setDiscountModal(false); void submit() }}>Place order</button>
+      </div>
+    </Modal>}
+    </>
   )
 }

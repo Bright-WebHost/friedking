@@ -1053,10 +1053,14 @@ export default function CustomerPage() {
 
 function OfferBanner({ promotions }: { promotions: Promotion[] }) {
   const [index, setIndex] = useState(0)
+  const [imageFailed, setImageFailed] = useState(false)
 
   useEffect(() => {
     setIndex(0)
   }, [promotions])
+  useEffect(() => {
+    setImageFailed(false)
+  }, [promotions[index]?.image_url])
 
   useEffect(() => {
     if (promotions.length < 2) return
@@ -1068,12 +1072,12 @@ function OfferBanner({ promotions }: { promotions: Promotion[] }) {
   return (
     <section className="w-full overflow-hidden bg-fk-ink">
       <div className="relative aspect-[2/1] w-full">
-        {promotion?.image_url ? (
+        <div className="absolute inset-0 bg-gradient-to-br from-fk-ink via-fk-ink to-fk-red" />
+        {promotion?.image_url && !imageFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={optimizeImageUrl(promotion.image_url, 900) ?? ''} alt="" fetchPriority="high" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={optimizeImageUrl(promotion.image_url, 900) ?? ''} alt="" fetchPriority="high" decoding="async" onError={() => setImageFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <>
-            <div className="absolute inset-0 bg-gradient-to-br from-fk-ink via-fk-ink to-fk-red" />
             <div className="absolute -right-6 -top-10 h-28 w-28 rounded-full bg-fk-red/80" aria-hidden />
             <div className="absolute -bottom-12 right-14 h-24 w-24 rounded-full bg-fk-yellow/20" aria-hidden />
           </>

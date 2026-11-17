@@ -131,6 +131,7 @@ export const posHandler: Handler = {
 
       // Dine-in: attach to the open tab for that table, or open one.
       let sessionId: string | null = null
+      let tableHasPreviousRounds = false
       if (type === 'dine-in') {
         const table = check(await ctx.admin.from('restaurant_tables').select('id').eq('branch_id', ctx.branch.id)
           .eq('table_number', tableNumber).eq('is_active', true).maybeSingle(), 'load the table')
@@ -138,6 +139,8 @@ export const posHandler: Handler = {
         const open = check(await ctx.admin.from('table_sessions').select('id, customer_name, phone').eq('table_id', table.id).eq('status', 'open').maybeSingle(), 'load the table tab')
         if (open) {
           sessionId = open.id
+          const { count } = await ctx.admin.from('orders').select('id', { count: 'exact', head: true }).eq('table_session_id', open.id)
+          tableHasPreviousRounds = (count ?? 0) > 0
           if (!open.phone || !open.customer_name) {
             await ctx.admin.from('table_sessions').update({ phone: open.phone ?? phone, customer_name: open.customer_name ?? (name || null) }).eq('id', open.id)
           }
@@ -193,7 +196,7 @@ export const posHandler: Handler = {
         specialInstructions: null, source: 'pos', tableNumber,
         items: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPricePaise: l.pricePaise })),
         subtotalPaise: totals.subtotalPaise, gstPaise: totals.gstPaise, totalPaise: total,
-        ...(sessionId ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: total, tableRunningTotalPaise } } : {}),
+        ...(sessionId && tableHasPreviousRounds ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: total, tableRunningTotalPaise } } : {}),
       })
       await audit(ctx, { orderId: order.id, orderNumber: order.order_number, action: 'pos_order', to: 'preparing', detail: `${type}${tableNumber ? ` · table ${tableNumber}` : ''} · by ${ctx.staff.name}` })
       return { orderId: order.id, orderNumber: order.order_number, totalPaise: total }
