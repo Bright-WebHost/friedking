@@ -82,6 +82,7 @@ Seeded: Pandeshwar only (using branch id `a1b2c3d4-0001-0001-0001-000000000001`)
 - Cart is saved in localStorage per branch; wrap storage access in try/catch.
 - Brand tokens (`fk-*`) live in `app/globals.css`; the dashboard has its own scoped variables in `app/dashboard/dashboard.css`.
 - The WhatsApp bot link format is `/?branch=pandeshwar&phone=91XXXXXXXXXX`. It skips the branch picker and pre-fills the phone.
+- Internal platform controls use `/platform-admin` and a dedicated `platform_admins` allowlist, not a hidden dashboard staff account. Keep its API server-authorized and audit logged.
 
 ## Status
 
