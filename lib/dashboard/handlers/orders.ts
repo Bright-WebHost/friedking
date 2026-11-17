@@ -1,5 +1,6 @@
 import { calcTotals } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
+import { settleTable } from '@/lib/dashboard/tableSessions'
 import { audit, check, emitOrderEvent, getSettings, HttpError, id, int, optStr, str, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
@@ -62,11 +63,26 @@ async function checkPasscode(ctx: Ctx, passcode: unknown) {
 /** Every status move goes through here: timestamps, stock, loyalty, outbox, audit. */
 export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
   passcode?: unknown; reason?: string | null; prepMinutes?: number | null; extra?: Record<string, unknown>; action?: string; detail?: string
+  paymentCollected?: boolean; sendInvoice?: boolean
+  expectedRiderId?: string
 } = {}) {
   const from = order.status
-  if (from === to && !opts.extra) return order
   if (isBackward(from, to)) await checkPasscode(ctx, opts.passcode)
   else if (to === 'cancelled' && from !== 'cancelled' && opts.action !== 'decline') await checkCancelCode(ctx, opts.passcode)
+  if (to === 'delivered' && order.order_type === 'dine-in' && order.table_session_id && from !== 'cancelled') {
+    await settleTable(ctx, order.table_session_id, { paymentCollected: opts.paymentCollected, sendInvoice: opts.sendInvoice })
+    return { ...order, status: to }
+  }
+  if (from === to && !opts.extra) return order
+
+  let sendAcceptanceReceipt = !order.accepted_at && (from === 'pending' || from === 'confirmed')
+  if (sendAcceptanceReceipt && to === 'preparing' && order.table_session_id) {
+    const rounds = check(await ctx.admin.from('orders').select('id')
+      .eq('branch_id', ctx.branch.id).eq('table_session_id', order.table_session_id)
+      .in('status', ['pending', 'confirmed', 'preparing', 'ready', 'delivered'])
+      .order('created_at').order('id').limit(1), 'load the first table round') ?? []
+    sendAcceptanceReceipt = sendAcceptanceReceipt && rounds[0]?.id === order.id
+  }
 
   const now = new Date().toISOString()
   const updates: Record<string, unknown> = { status: to, ...(opts.extra ?? {}) }
@@ -85,7 +101,9 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
     updates.cancel_reason = opts.reason ?? null
   }
 
-  const res = await ctx.admin.from('orders').update(updates).eq('id', order.id).eq('status', from).select('id').maybeSingle()
+  let update = ctx.admin.from('orders').update(updates).eq('id', order.id).eq('status', from)
+  if (opts.expectedRiderId) update = update.eq('rider_id', opts.expectedRiderId)
+  const res = await update.select('id').maybeSingle()
   check(res, 'update the order')
   if (!res.data) throw new HttpError(409, `Order #${order.order_number} changed on another screen. Refresh and try again.`)
 
@@ -103,8 +121,8 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
   if (from !== to) {
     const customerNotification = to === 'cancelled'
       ? { kind: 'cancelled', windowOnly: true, reason: opts.reason ?? null }
-      : from === 'pending' && to === 'preparing'
-        ? { kind: 'accepted', receipt: true, windowOnly: true }
+      : to === 'preparing'
+        ? { kind: 'accepted', receipt: sendAcceptanceReceipt, windowOnly: true }
         : to === 'ready' && order.order_type === 'pickup'
           ? { kind: 'ready_for_pickup', windowOnly: true }
           : to === 'delivered' && order.order_type !== 'dine-in'
@@ -132,11 +150,12 @@ const STATUSES: Status[] = ['pending', 'preparing', 'ready', 'delivered', 'cance
 const REAL_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled']
 const DECLINE_REASONS = ['Item unavailable', 'Kitchen full', 'Outside delivery area', 'Closing soon']
 
-export async function loadOrders(ctx: Ctx, opts: { since?: string | null; until?: string | null; limit?: number; sessionIds?: string[] }) {
+export async function loadOrders(ctx: Ctx, opts: { since?: string | null; until?: string | null; limit?: number; sessionIds?: string[]; orderId?: string | null }) {
   // Drafts (WhatsApp orders the customer has not confirmed) are not orders yet.
   let q = ctx.admin.from('orders').select(ORDER_SELECT).eq('branch_id', ctx.branch.id).in('status', REAL_STATUSES)
   if (opts.since) q = q.gte('created_at', opts.since)
   if (opts.until) q = q.lt('created_at', opts.until)
+  if (opts.orderId) q = q.eq('id', id(opts.orderId, 'order'))
   if (opts.sessionIds) q = q.in('table_session_id', opts.sessionIds.length ? opts.sessionIds : ['00000000-0000-0000-0000-000000000000'])
   return check(await q.order('created_at', { ascending: false }).limit(opts.limit ?? 1500), 'load orders') ?? []
 }
@@ -157,7 +176,7 @@ export const ordersHandler: Handler = {
     const since = params.get('since')
     const until = params.get('until')
     const limit = Math.min(2000, Number(params.get('limit')) || 1500)
-    const orders = await loadOrders(ctx, { since, until, limit })
+    const orders = await loadOrders(ctx, { since, until, limit, orderId: params.get('orderId') })
     return { orders, serverTime: new Date().toISOString() }
   },
   actions: {
@@ -186,12 +205,17 @@ export const ordersHandler: Handler = {
     /** Mark done popup: payment collected + optional invoice. */
     async done(ctx, b) {
       const order = await getOrder(ctx, b.orderId)
+      if (b.expectedRiderId && order.rider_id !== b.expectedRiderId) throw new HttpError(409, 'The rider assignment changed')
       const extra: Record<string, unknown> = {}
       if (b.paymentCollected && !order.cash_collected) {
         const now = new Date().toISOString()
         Object.assign(extra, { cash_collected: true, cash_amount_paise: order.total_paise, cash_collected_at: now, payment_taken_by: ctx.staff.name })
       }
-      await moveOrder(ctx, order, 'delivered', { passcode: b.passcode, extra, detail: b.paymentCollected ? 'marked done + payment collected' : 'marked done' })
+      await moveOrder(ctx, order, 'delivered', {
+        passcode: b.passcode, extra, paymentCollected: !!b.paymentCollected,
+        expectedRiderId: b.expectedRiderId,
+        sendInvoice: b.sendInvoice !== false, detail: b.paymentCollected ? 'marked done + payment collected' : 'marked done',
+      })
       if (b.sendInvoice && order.order_type !== 'dine-in') {
         await emitOrderEvent(ctx, order.id, 'invoice_requested', { orderNumber: order.order_number, requestedBy: ctx.staff.name })
       }

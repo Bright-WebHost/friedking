@@ -42,7 +42,8 @@ export default function Settings() {
 
   const save = async () => {
     setSaving(true)
-    try { await api.post('settings', 'save', { ...br, settings: st }); toast('Settings saved'); setS(null); setB(null); void reload(); void reloadMeta() } catch (e) { fail(e) } finally { setSaving(false) }
+    const editableSettings = Object.fromEntries(Object.entries(st).filter(([key]) => key !== 'blast_monthly_limit'))
+    try { await api.post('settings', 'save', { ...br, settings: editableSettings }); toast('Settings saved'); setS(null); setB(null); void reload(); void reloadMeta() } catch (e) { fail(e) } finally { setSaving(false) }
   }
   const upload = async (action: string, file: File | undefined, extra: Record<string, string> = {}) => {
     if (!file) return
@@ -124,11 +125,6 @@ export default function Settings() {
         {data.pincodes.length ? data.pincodes.map((p) => <div className="histrow" key={p.pincode}><span>{p.pincode}{p.area ? ` · ${p.area}` : ''}</span>
           <button className="btn sm ghost danger" onClick={async () => { try { await api.post('settings', 'removePincode', { pincode: p.pincode }); toast('Pincode removed'); void reload() } catch (e) { fail(e) } }}>Remove</button></div>)
           : <div className="none">No delivery pincodes added</div>}
-      </div>
-
-      <div className="panel"><h3>Promotion messages</h3>
-        {field('Monthly WhatsApp blast limit', <input className="f" type="number" min="0" max="1000000" inputMode="numeric" value={st.blast_monthly_limit} onChange={setSet('blast_monthly_limit')} />)}
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>Owner-only setting. Failed messages do not count; the limit resets on the first day of each month. Changes are audit logged.</div>
       </div>
 
       <div className="panel"><h3>Payment methods</h3><input className="f" value={st.payment_methods} onChange={setSet('payment_methods')} placeholder="e.g. Cash or UPI on delivery" /></div>

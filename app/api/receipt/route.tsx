@@ -110,26 +110,26 @@ export async function GET(request: NextRequest) {
     )
 
     const wrapLines = (t: string, per: number) => Math.max(1, Math.ceil(t.length / per))
-    const detailH = detail.reduce((h, [, v]) => h + 14 + 46 * wrapLines(v, 26), 0)
-    const itemsH = items.reduce((h, it) => h + 92 + (it.notes ? 40 * wrapLines(it.notes, 44) : 0), 0)
-    const addrLines = branch?.address ? wrapLines(branch.address, 48) : 0
-    const height = 300 + addrLines * 30 + 30 + 230 + detailH + itemsH + summary.length * 34 + 70 + 100 + (s.gstin ? 26 : 0)
+    const detailH = detail.reduce((h, [, v]) => h + 18 + 48 * wrapLines(v, 32), 0)
+    const itemsH = items.reduce((h, it) => h + 82 + 46 * (wrapLines(it.name_snapshot, 30) - 1) + (it.notes ? 44 * wrapLines(it.notes, 48) : 0), 0)
+    const addrLines = branch?.address ? wrapLines(branch.address, 54) : 0
+    const height = 340 + addrLines * 40 + 50 + 250 + detailH + itemsH + summary.length * 48 + 130 + 210 + (s.gstin ? 38 : 0)
 
     return new ImageResponse(
       (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff', fontFamily: 'Poppins' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '22px 40px 18px' }}>
-            <img src={logo} alt="Fried King" style={{ width: 210, height: 58, objectFit: 'contain' }} />
-            {branch?.address ? <span style={{ fontSize: 21, color: '#ffffff', marginTop: 9, textAlign: 'center', lineHeight: 1.3 }}>{branch.address}</span> : null}
-            {phone ? <span style={{ fontSize: 21, color: '#ffffff', marginTop: 2 }}>{phone}</span> : null}
-            {s.gstin ? <span style={{ fontSize: 18, color: '#ffe0dc', marginTop: 5 }}>GSTIN: {s.gstin}</span> : null}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '28px 40px 24px' }}>
+            <img src={logo} alt="Fried King" style={{ width: 340, height: 100, objectFit: 'contain' }} />
+            {branch?.address ? <span style={{ fontSize: 30, color: '#ffffff', marginTop: 14, textAlign: 'center', lineHeight: 1.35 }}>{branch.address}</span> : null}
+            {phone ? <span style={{ fontSize: 30, color: '#ffffff', marginTop: 4 }}>{phone}</span> : null}
+            {s.gstin ? <span style={{ fontSize: 26, color: '#ffe0dc', marginTop: 6 }}>GSTIN: {s.gstin}</span> : null}
           </div>
           {checker(false)}
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 40px 0' }}>
             <span style={{ fontSize: 54, fontWeight: 700, color: '#1c1c1c', letterSpacing: 4 }}>{isTable ? `TABLE ${order.table_number ?? ''}` : `FK-${order.order_number}`}</span>
-            <span style={{ fontSize: 22, color: '#8a8a8a', marginTop: 4 }}>{when}</span>
-            <div style={{ display: 'flex', marginTop: 16, color: RED, fontSize: 23, fontWeight: 700, letterSpacing: 1, padding: '9px 30px', borderRadius: 999, border: `4px solid ${RED}` }}>
+            <span style={{ fontSize: 30, color: '#686868', marginTop: 6 }}>{when}</span>
+            <div style={{ display: 'flex', marginTop: 18, color: RED, fontSize: 30, fontWeight: 700, letterSpacing: 1, padding: '12px 30px', borderRadius: 999, border: `4px solid ${RED}` }}>
               {typeLabel} · {payLabel}
             </div>
           </div>
@@ -137,44 +137,45 @@ export async function GET(request: NextRequest) {
           <div style={{ display: 'flex', flexDirection: 'column', padding: '0 40px', marginTop: 24 }}>
             <div style={{ display: 'flex', borderTop: '2px dashed #f2b8ae', marginBottom: 14 }} />
             {detail.map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
-                <span style={{ fontSize: 23, color: '#8a8a8a' }}>{k}</span>
-                <span style={{ fontSize: 23, fontWeight: 600, color: '#1c1c1c', textAlign: 'right', maxWidth: 680 }}>{v}</span>
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 18 }}>
+                <span style={{ fontSize: 30, color: '#686868', width: 230, flexShrink: 0 }}>{k}</span>
+                <span style={{ fontSize: 32, fontWeight: 600, color: '#1c1c1c', textAlign: 'right', maxWidth: 720, lineHeight: 1.4 }}>{v}</span>
               </div>
             ))}
             <div style={{ display: 'flex', borderTop: '2px dashed #f2b8ae', margin: '10px 0 14px' }} />
 
             {items.map((it, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: '2px dashed #f2c7bf', padding: '9px 0 10px' }}>
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: '2px dashed #f2c7bf', padding: '14px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', flex: 1, fontSize: 26, fontWeight: 600, color: '#1c1c1c' }}>{it.name_snapshot}</span>
-                  <span style={{ display: 'flex', width: 80, justifyContent: 'center', fontSize: 23, color: '#8a8a8a' }}>x{it.quantity}</span>
-                  <span style={{ display: 'flex', width: 160, justifyContent: 'flex-end', fontSize: 26, fontWeight: 700, color: '#1c1c1c' }}>{rs(it.line_total_paise)}</span>
+                  <span style={{ display: 'flex', flex: 1, fontSize: 36, fontWeight: 600, color: '#1c1c1c', lineHeight: 1.35 }}>{it.name_snapshot}</span>
+                  <span style={{ display: 'flex', width: 90, justifyContent: 'center', fontSize: 32, color: '#525252' }}>x{it.quantity}</span>
+                  <span style={{ display: 'flex', width: 220, justifyContent: 'flex-end', fontSize: 34, fontWeight: 700, color: '#1c1c1c' }}>{rs(it.line_total_paise)}</span>
                 </div>
-                {it.notes ? <span style={{ fontSize: 20, color: RED, marginTop: 4 }}>Note: {it.notes}</span> : null}
+                {it.notes ? <span style={{ fontSize: 30, color: RED, marginTop: 7, lineHeight: 1.4 }}>Note: {it.notes}</span> : null}
               </div>
             ))}
 
             <div style={{ display: 'flex', flexDirection: 'column', margin: '14px 0 18px' }}>
               {summary.map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <span style={{ fontSize: 21, color: '#8a8a8a' }}>{k}</span>
-                  <span style={{ fontSize: 21, color: '#5a5a5a' }}>{v}</span>
+                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <span style={{ fontSize: 30, color: '#686868' }}>{k}</span>
+                  <span style={{ fontSize: 30, color: '#3f3f3f' }}>{v}</span>
                 </div>
               ))}
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: RED, borderRadius: 24, padding: '22px 32px' }}>
-              <span style={{ fontSize: 24, color: '#ffffff', letterSpacing: 5 }}>TOTAL</span>
-              <span style={{ fontSize: 56, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
+              <span style={{ fontSize: 32, color: '#ffffff', letterSpacing: 5 }}>TOTAL</span>
+              <span style={{ fontSize: 64, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, justifyContent: 'center', padding: '24px 40px', textAlign: 'center' }}>
-            <div style={{ display: 'flex', fontSize: 24, color: '#5a5a5a' }}>
+            <div style={{ display: 'flex', fontSize: 32, color: '#3f3f3f' }}>
               Thank you for ordering with <span style={{ color: RED, fontWeight: 700, marginLeft: 10 }}>Fried King</span>!
             </div>
-            {phone ? <span style={{ fontSize: 21, color: '#5a5a5a', marginTop: 5 }}>Questions? WhatsApp us on {phone}</span> : null}
+            {phone ? <span style={{ fontSize: 28, color: '#525252', marginTop: 8 }}>Questions? WhatsApp us on {phone}</span> : null}
+            <span style={{ fontSize: 23, color: '#757575', marginTop: 24 }}>Developed by Loopdot</span>
           </div>
           {checker(true)}
         </div>

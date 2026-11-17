@@ -355,11 +355,35 @@ body{font-family:Arial,sans-serif;padding:3mm 4mm;font-size:13px;width:72mm;max-
 .bill{break-after:page;page-break-after:always}.kot{display:block;break-before:page;page-break-before:always;padding-top:5mm}.kot h2{font-size:17px;text-align:center;margin:0 0 4px}.kot .items td:first-child{font-weight:700;font-size:14px}.kot .items td:nth-child(2){font-weight:700;font-size:14px}
 @media print{.bill{break-after:page;page-break-after:always}.kot{break-before:page;page-break-before:always}}`
 
-function printHtml(title: string, body: string) {
+export function openPrintWindow() {
   const w = window.open('', '_blank', 'width=380,height=640')
+  if (w) {
+    w.document.title = 'Preparing bill'
+    w.document.body.textContent = 'Preparing your bill…'
+  }
+  return w
+}
+
+function printHtml(title: string, body: string, printWindow?: Window | null) {
+  const w = printWindow === undefined ? openPrintWindow() : printWindow
+  if (w?.closed) return false
   if (!w) return false
+  w.document.open()
   w.document.write(`<html><head><title>${esc(title)}</title><style>${RECEIPT_CSS}</style></head><body>${body}</body></html>`)
-  w.document.close(); w.focus(); w.print()
+  w.document.close()
+  const images = Array.from(w.document.images).map((img) => img.complete ? Promise.resolve() : new Promise<void>((resolve) => {
+    img.onload = () => resolve()
+    img.onerror = () => resolve()
+  }))
+  void Promise.all(images).then(() => {
+    if (w.closed) return
+    w.addEventListener('afterprint', () => w.close(), { once: true })
+    w.setTimeout(() => {
+      if (w.closed) return
+      w.focus()
+      w.print()
+    }, 150)
+  })
   return true
 }
 
@@ -411,8 +435,8 @@ function kotMarkup(o: DOrder) {
     ${o.special_instructions ? `<hr class="dots"><div><b>Order note:</b> ${esc(o.special_instructions)}</div>` : ''}</section>`
 }
 
-export function printReceipt(o: DOrder, branch: DBranch, settings: Record<SettingKey, string>) {
-  return printHtml(`Bill ${o.order_number} + KOT ${o.token_number ?? ''}`, `${billMarkup(o, branch, settings)}${kotMarkup(o)}`)
+export function printReceipt(o: DOrder, branch: DBranch, settings: Record<SettingKey, string>, printWindow?: Window | null) {
+  return printHtml(`Bill ${o.order_number} + KOT ${o.token_number ?? ''}`, `${billMarkup(o, branch, settings)}${kotMarkup(o)}`, printWindow)
 }
 
 export function printKOT(o: DOrder, branch: DBranch): boolean {

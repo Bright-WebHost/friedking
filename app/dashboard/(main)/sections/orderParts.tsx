@@ -91,13 +91,24 @@ export function useOrderActions(reload: () => unknown) {
     )
   }, [riders, close, run, api])
 
-  const markDone = useCallback((o: DOrder) => {
+  const markDone = useCallback(async (o: DOrder) => {
     const dine = o.order_type === 'dine-in'
-    setModal(<MarkDone o={o} dine={dine} onClose={close} onOk={(pay, inv) => {
+    let totalPaise = o.total_paise
+    let allPaid = o.cash_collected
+    if (dine && o.table_session_id) {
+      try {
+        const { orders } = await api.get<{ orders: DOrder[] }>('tables')
+        const rounds = orders.filter((round) => round.table_session_id === o.table_session_id && round.status !== 'cancelled')
+        totalPaise = rounds.reduce((sum, round) => sum + round.total_paise, 0)
+        allPaid = rounds.length > 0 && rounds.every((round) => round.cash_collected)
+      } catch (e) { toast(e instanceof Error ? e.message : 'Could not load the table total'); return }
+    }
+    setModal(<MarkDone o={o} dine={dine} totalPaise={totalPaise} allPaid={allPaid} onClose={close} onOk={(pay, inv) => {
       close()
-      void run(() => api.post('orders', 'done', { orderId: o.id, paymentCollected: pay, sendInvoice: inv }), `#${o.order_number} marked done${pay ? ' · payment collected' : ''}`)
+      void run(() => api.post('orders', 'done', { orderId: o.id, paymentCollected: pay, sendInvoice: inv }),
+        dine && o.table_session_id ? `Table ${o.table_number} closed · all rounds done` : `#${o.order_number} marked done${pay ? ' · payment collected' : ''}`)
     }} />)
-  }, [api, close, run])
+  }, [api, close, run, toast])
 
   const cash = useCallback((o: DOrder) => run(() => api.post('orders', 'cash', { orderId: o.id }), `${rs(o.total_paise)} recorded for #${o.order_number}`), [api, run])
 
@@ -136,18 +147,17 @@ export function useOrderActions(reload: () => unknown) {
   return { modal, setModal, close, setStatus, assignRider, markDone, cash, cancel, print, printKOT: printKOTOrder, edit, details }
 }
 
-function MarkDone({ o, dine, onClose, onOk }: { o: DOrder; dine: boolean; onClose: () => void; onOk: (pay: boolean, inv: boolean) => void }) {
+function MarkDone({ o, dine, totalPaise, allPaid, onClose, onOk }: { o: DOrder; dine: boolean; totalPaise: number; allPaid: boolean; onClose: () => void; onOk: (pay: boolean, inv: boolean) => void }) {
   const [pay, setPay] = useState(true)
   const [inv, setInv] = useState(true)
   return (
     <Modal onClose={onClose}>
-      <h3>Mark #{o.order_number} done</h3>
-      <p>{customerName(o)} · {rs(o.total_paise)}</p>
-      <label className="mchk"><input type="checkbox" checked={o.cash_collected || pay} disabled={o.cash_collected} onChange={(e) => setPay(e.target.checked)} /> Payment collected</label>
-      {dine
-        ? <p className="mnote">The full-tab invoice goes out when this table is closed &amp; paid.</p>
-        : <label className="mchk"><input type="checkbox" checked={inv} onChange={(e) => setInv(e.target.checked)} /> Send invoice to customer (WhatsApp, once connected)</label>}
-      <div className="mrow"><button onClick={onClose}>Cancel</button><button className="go" onClick={() => onOk(pay && !o.cash_collected, !dine && inv)}>Confirm</button></div>
+      <h3>{dine && o.table_session_id ? `Close table ${o.table_number}` : `Mark #${o.order_number} done`}</h3>
+      <p>{customerName(o)} · {rs(totalPaise)}</p>
+      <label className="mchk"><input type="checkbox" checked={allPaid || pay} disabled={allPaid} onChange={(e) => setPay(e.target.checked)} /> Payment collected</label>
+      {dine && o.table_session_id && <p className="mnote">All rounds will be marked done and the table will be closed.</p>}
+      <label className="mchk"><input type="checkbox" checked={inv} onChange={(e) => setInv(e.target.checked)} /> {dine ? 'Send the complete table bill on WhatsApp' : 'Send invoice to customer on WhatsApp'}</label>
+      <div className="mrow"><button onClick={onClose}>Cancel</button><button className="go" onClick={() => onOk(pay || allPaid, inv)}>Confirm</button></div>
     </Modal>
   )
 }

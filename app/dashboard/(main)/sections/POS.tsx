@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { calcTotals } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
 import type { DCategory, DCustomer, DMenuItem, DOrder, DProgram, DSession, DTable } from '@/lib/dashboard/types'
-import { Img, Loading, Modal, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
+import { Img, Loading, Modal, openPrintWindow, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
 
 const PER_CAT = 8
 type OType = 'pickup' | 'delivery' | 'dine-in'
@@ -35,6 +35,7 @@ export default function POS() {
   const [discountModal, setDiscountModal] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const [sending, setSending] = useState(false)
+  const submitting = useRef(false)
   const [bad, setBad] = useState('')
 
   const items = useMemo(() => data?.items.filter((i) => i.is_active || cart[i.id]) ?? [], [data, cart])
@@ -81,11 +82,14 @@ export default function POS() {
   })()
 
   const submit = async () => {
+    if (submitting.current || !lines.length) return
     setBad('')
     if (digits.length < 10) { setBad('phone'); toast('Enter a valid WhatsApp number'); return }
     if (type === 'delivery' && !address.trim()) { setBad('address'); toast('Delivery needs an address'); return }
     if (type === 'dine-in' && !table.trim()) { setBad('table'); toast('Dine-in needs a table number'); return }
+    submitting.current = true
     setSending(true)
+    const printWindow = settings.auto_print === 'true' ? openPrintWindow() : null
     try {
       const r = await api.post<{ orderId: string; orderNumber: number; totalPaise: number }>('pos', 'create', {
         phone: digits, name, orderType: type, address, pincode, tableNumber: type === 'dine-in' ? Number(table) : null,
@@ -93,17 +97,28 @@ export default function POS() {
         redeemPoints: pts, discountPct: discountPct || undefined, discountPasscode: discountPct ? discountPasscode : undefined,
       })
       toast(`#${r.orderNumber} sent to the kitchen`)
-      if (settings.auto_print === 'true') {
-        const { orders } = await api.get<{ orders: DOrder[] }>('orders', { since: new Date(Date.now() - 10 * 60000).toISOString(), limit: 50 })
-        const o = orders.find((x) => x.id === r.orderId)
-        if (o && printReceipt(o, branch, settings)) void api.post('orders', 'printed', { orderId: o.id })
-      }
-      clear(); setPhone(''); setName(''); setAddress(''); setPincode(''); setTable('')
+      clear(); setCartOpen(false); setPhone(''); setName(''); setAddress(''); setPincode(''); setTable('')
       window.dispatchEvent(new Event('fk-orders-changed'))
       go('orders')
+      if (settings.auto_print === 'true') {
+        if (!printWindow) toast('Order placed. Allow pop-ups to print the bill.')
+        else void (async () => {
+          try {
+            const { orders } = await api.get<{ orders: DOrder[] }>('orders', { orderId: r.orderId })
+            const o = orders.find((x) => x.id === r.orderId)
+            if (!o || !printReceipt(o, branch, settings, printWindow)) throw new Error('Bill unavailable')
+            void api.post('orders', 'printed', { orderId: o.id }).catch(() => undefined)
+          } catch {
+            printWindow.close()
+            toast(`Order #${r.orderNumber} placed. Use Print on the order to print the bill.`)
+          }
+        })()
+      }
     } catch (e) {
+      printWindow?.close()
       toast(e instanceof Error ? e.message : 'Could not create the order')
     } finally {
+      submitting.current = false
       setSending(false)
     }
   }

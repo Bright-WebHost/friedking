@@ -53,6 +53,7 @@ export function useFloor() {
       close(); setOpenId(null)
       const first = roundsOf(s)[0]
       if (print && first) printReceipt({ ...first, items: roundsOf(s).flatMap((o) => o.items), total_paise: amount, subtotal_paise: roundsOf(s).reduce((x, o) => x + o.subtotal_paise, 0), gst_paise: roundsOf(s).reduce((x, o) => x + o.gst_paise, 0), cash_collected: true }, branch, settings)
+      window.dispatchEvent(new Event('fk-orders-changed'))
       void reload()
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not close the table') }
   }} />)
@@ -128,7 +129,8 @@ export function useFloor() {
                         try { await api.post('orders', 'decline', { orderId: o.id, reason: 'Kitchen full' }); toast(`#${o.order_number} declined`); void reload() }
                         catch (e) { toast(e instanceof Error ? e.message : 'Could not decline') }
                       }}>Reject</button>}
-                      {['preparing', 'confirmed', 'ready'].includes(o.status) && <button onClick={() => act.markDone(o)}>✓ Served</button>}
+                      {['preparing', 'confirmed'].includes(o.status) && <button onClick={() => void act.setStatus(o, 'ready')}>✓ Served</button>}
+                      {o.status === 'ready' && <button onClick={() => void act.markDone(o)}>Close table &amp; mark done</button>}
                       {canEdit(o) && <button onClick={() => act.edit(o)}>Edit round</button>}
                     </div>
                   </div>
@@ -202,11 +204,16 @@ export function TableRail({ floor, mobile }: { floor: ReturnType<typeof useFloor
       <div className="raillist">
         {floor.sorted.map((t) => {
           const s = floor.sessionOf(t), st = floor.stateOf(s)
+          const rounds = s ? floor.roundsOf(s) : []
+          const preview = rounds.flatMap((order) => order.items.map((item) => `${item.quantity}× ${item.name_snapshot}`)).slice(0, 2).join(', ')
           return (
-            <button key={t.id} className={`railrow ${st}`} onClick={() => floor.setOpenId(t.id)}>
+            <button key={t.id} className={`railrow ${st} ${s ? 'occupied' : ''}`} aria-pressed={floor.openId === t.id} onClick={() => floor.setOpenId(t.id)}>
               <span className="railnum">{t.table_number}</span>
               <span className="railinfo"><b>Table {t.table_number}</b>
-                <small>{s ? `${rs(floor.totalOf(s))} · ${TABLE_LABEL[st]}` : 'Free'}</small></span>
+                <small>{s ? `${rs(floor.totalOf(s))} · ${TABLE_LABEL[st]}` : 'Free'}</small>
+                {s && <span className="railguest">{s.customer_name || 'Guest'} · {rounds.length} {rounds.length === 1 ? 'round' : 'rounds'} · {minsSince(s.opened_at)}m</span>}
+                {preview && <span className="railpreview">{preview}</span>}
+              </span>
               <span className="railchev">›</span>
             </button>
           )

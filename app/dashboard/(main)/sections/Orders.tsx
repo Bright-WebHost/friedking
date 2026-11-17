@@ -69,7 +69,7 @@ export default function Orders() {
   // New dine-in rounds have a dedicated table column; accepted rounds follow the normal kitchen flow.
   const dineActive = valid.filter((o) => o.order_type === 'dine-in' && ACTIVE_DINE.includes(o.status) && o.status === 'pending')
   const prep = valid.filter((o) => ['preparing', 'confirmed'].includes(o.status))
-  const ready = valid.filter((o) => o.order_type !== 'dine-in' && o.status === 'ready')
+  const ready = valid.filter((o) => o.status === 'ready')
   const done = valid.filter((o) => o.status === 'delivered')
 
   const card = (o: DOrder, col: 'prep' | 'ready' | 'done' | 'dine' | 'drawer') => {
@@ -227,10 +227,10 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
                 <button className="mobtn bad" onClick={() => decline(o)}>Reject</button>
               </>}
               {['preparing', 'confirmed'].includes(o.status) && (o.order_type === 'dine-in'
-                ? <button className="mobtn go" onClick={() => act.markDone(o)}>✓ Mark done</button>
+                ? <button className="mobtn go" onClick={() => void act.setStatus(o, 'ready')}>✓ Mark served</button>
                 : <button className="mobtn go" onClick={() => o.order_type === 'delivery' && !o.rider_id ? act.assignRider(o, () => void act.setStatus(o, 'ready')) : void act.setStatus(o, 'ready')}>Ready / dispatch</button>)}
               {o.status === 'ready' && <>
-                <button className="mobtn go" onClick={() => act.markDone(o)}>Mark delivered</button>
+                <button className="mobtn go" onClick={() => void act.markDone(o)}>{o.table_session_id ? 'Close table & mark done' : 'Mark delivered'}</button>
                 {!o.cash_collected && <button className="mobtn" onClick={() => void act.cash(o)}>💵 {rs(o.total_paise)}</button>}
               </>}
               {canEdit(o) && <button className="mobtn" onClick={() => act.edit(o)}>Edit</button>}

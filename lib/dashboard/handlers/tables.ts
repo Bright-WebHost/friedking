@@ -1,5 +1,5 @@
-import { normalizePhone } from '@/lib/utils'
-import { audit, check, emitOrderEvent, HttpError, id, int, optStr, type Ctx } from '@/lib/dashboard/server'
+import { audit, check, HttpError, id, int, optStr, type Ctx } from '@/lib/dashboard/server'
+import { settleTable } from '@/lib/dashboard/tableSessions'
 import type { Handler } from './index'
 import { loadOrders } from './orders'
 
@@ -34,39 +34,9 @@ export const tablesHandler: Handler = {
       return { ok: true }
     },
     async close(ctx, b) {
-      const s = await getSession(ctx, b.sessionId)
-      const rounds = (check(await ctx.admin.from('orders').select('id, order_number, total_paise, status, items:order_items(name_snapshot, quantity, line_total_paise)')
-        .eq('table_session_id', s.id).neq('status', 'cancelled').order('created_at'), 'load the rounds') ?? [])
-      const total = rounds.reduce((sum, o) => sum + o.total_paise, 0)
-      const amount = b.amountPaise != null && b.amountPaise !== '' ? int(b.amountPaise, 'amount', 0) : total
-      const phone = b.phone ? normalizePhone(String(b.phone)) : null
-      const now = new Date().toISOString()
-
-      for (const [i, o] of rounds.entries()) {
-        check(await ctx.admin.from('orders').update({
-          status: 'delivered', delivered_at: now, cash_collected: true, cash_collected_at: now,
-          cash_amount_paise: i === 0 ? amount : 0, payment_taken_by: ctx.staff.name,
-        }).eq('id', o.id), 'settle the tab')
-        if (o.status !== 'delivered') {
-          const { error } = await ctx.admin.rpc('fk_loyalty_earn', { p_order_id: o.id })
-          if (error) console.error('[dashboard] loyalty earn on close', error.message)
-        }
-      }
-      check(await ctx.admin.from('table_sessions').update({
-        status: 'closed', closed_at: now, closed_by: ctx.staff.userId, closed_by_name: ctx.staff.name,
-        closed_total_paise: amount, payment_method: 'cash', phone: phone ?? s.phone,
-      }).eq('id', s.id), 'close the tab')
-
-      if (b.sendInvoice && (phone ?? s.phone) && rounds[0]) {
-        await emitOrderEvent(ctx, rounds[0].id, 'table_invoice_requested', {
-          orderNumber: rounds[0].order_number, sessionId: s.id, tableNumber: s.table?.table_number ?? null,
-          phone: phone ?? s.phone, totalPaise: amount, staff: ctx.staff.name,
-          customerNotification: { kind: 'table_closed', windowOnly: true, thankYou: true },
-          rounds: rounds.map((o) => ({ orderNumber: o.order_number, totalPaise: o.total_paise, items: o.items })),
-        })
-      }
-      await audit(ctx, { orderId: rounds[0]?.id ?? null, orderNumber: rounds[0]?.order_number ?? null, action: 'close_tab', from: 'open', to: 'closed', detail: `table ${s.table?.table_number} · ₹${(amount / 100).toFixed(2)} · ${ctx.staff.name}` })
-      return { ok: true, firstOrderId: rounds[0]?.id ?? null }
+      return settleTable(ctx, id(b.sessionId, 'tab'), {
+        amountPaise: b.amountPaise, phone: b.phone, sendInvoice: b.sendInvoice !== false,
+      })
     },
     async move(ctx, b) {
       const s = await getSession(ctx, b.sessionId)

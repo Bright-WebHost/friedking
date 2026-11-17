@@ -484,7 +484,7 @@ export default function CustomerPage() {
             >
               <Check className="h-9 w-9" strokeWidth={3} />
             </motion.div>
-            <h1 className="mt-4 font-display text-3xl font-extrabold uppercase">Order received</h1>
+            <h1 className="mt-4 font-display text-3xl font-extrabold uppercase">Order placed</h1>
             <p className="mt-1 text-sm text-white/85">Fried King · {shortName(branch?.name)}</p>
           </div>
           <div className="fk-checker" />
@@ -1069,17 +1069,22 @@ function OfferBanner({ promotions }: { promotions: Promotion[] }) {
   }, [promotions.length])
 
   const promotion = promotions[index]
+  if (!promotion) return null
   return (
     <section className="w-full overflow-hidden bg-fk-ink">
       <div className="relative aspect-[2/1] w-full">
         <div className="absolute inset-0 bg-gradient-to-br from-fk-ink via-fk-ink to-fk-red" />
         {promotion?.image_url && !imageFailed ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={optimizeImageUrl(promotion.image_url, 900) ?? ''} alt="" fetchPriority="high" decoding="async" onError={() => setImageFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
+          <img key={promotion.image_url} src={promotion.image_url} alt={promotion.title} fetchPriority="high" decoding="async" onError={() => setImageFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <>
             <div className="absolute -right-6 -top-10 h-28 w-28 rounded-full bg-fk-red/80" aria-hidden />
             <div className="absolute -bottom-12 right-14 h-24 w-24 rounded-full bg-fk-yellow/20" aria-hidden />
+            <div className="absolute inset-0 flex flex-col justify-center px-6 text-white sm:px-10">
+              <p className="font-display text-3xl font-extrabold sm:text-5xl">{promotion.title}</p>
+              {promotion.description && <p className="mt-2 max-w-md text-sm sm:text-lg">{promotion.description}</p>}
+            </div>
           </>
         )}
         {promotions.length > 1 && (
