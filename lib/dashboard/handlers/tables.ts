@@ -1,7 +1,7 @@
 import { audit, check, HttpError, id, int, optStr, type Ctx } from '@/lib/dashboard/server'
 import { settleTable } from '@/lib/dashboard/tableSessions'
 import type { Handler } from './index'
-import { loadOrders } from './orders'
+import { loadOrders, moveOrder } from './orders'
 
 async function getSession(ctx: Ctx, sessionId: unknown) {
   const s = check(await ctx.admin.from('table_sessions').select('*, table:restaurant_tables(id, table_number, seats)')
@@ -23,6 +23,15 @@ export const tablesHandler: Handler = {
     return { tables: check(tables, 'load tables') ?? [], sessions: open, orders }
   },
   actions: {
+    async ready(ctx, b) {
+      const session = await getSession(ctx, b.sessionId)
+      const rounds = await loadOrders(ctx, { sessionIds: [session.id], limit: 500 })
+      if (rounds.some((order) => order.status === 'pending')) throw new HttpError(409, 'Accept the new table round before marking the table ready.')
+      for (const order of rounds.filter((o) => o.status === 'preparing' || o.status === 'confirmed')) {
+        await moveOrder(ctx, order, 'ready')
+      }
+      return { ok: true }
+    },
     async add(ctx, b) {
       const tableNumber = int(b.tableNumber, 'table number', 1, 999)
       const seats = int(b.seats ?? 4, 'seats', 1, 40)

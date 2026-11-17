@@ -190,47 +190,101 @@ export function Img({ src, alt = '', className = '' }: { src: string | null | un
   return src ? <img src={src} alt={alt} loading="lazy" className={className} /> : <img src="/brand/mark-red.png" alt="" className={`${className} ph`} />
 }
 
-/** Oceana's slide-to-confirm. onDone may return false (or a rejected promise) to snap back. */
+/** Pointer movement stays on compositor transforms; cancelled gestures never confirm. */
 export function Slide({ label, color, onDone, big = false, pulse = false }: { label: string; color: string; onDone: () => unknown; big?: boolean; pulse?: boolean }) {
   const { busy } = useDash()
   const box = useRef<HTMLDivElement>(null)
-  const [x, setX] = useState(0)
+  const knob = useRef<HTMLDivElement>(null)
+  const fill = useRef<HTMLDivElement>(null)
   const [text, setText] = useState(label)
-  const drag = useRef<{ x0: number; max: number } | null>(null)
-  useEffect(() => setText(label), [label])
-
+  const [mode, setMode] = useState<'idle' | 'dragging' | 'working'>('idle')
+  const drag = useRef<{ pointerId: number; x0: number; max: number } | null>(null)
+  const position = useRef(0)
+  const frame = useRef<number | null>(null)
+  const pending = useRef(false)
+  const overThreshold = useRef(false)
+  const held = useRef(false)
+  const mounted = useRef(true)
   const knobW = big ? 66 : 50
-  const down = (e: React.PointerEvent) => {
-    if (!box.current) return
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-    drag.current = { x0: e.clientX, max: box.current.clientWidth - knobW - 6 }
-    busy.current += 1
-  }
-  const move = (e: React.PointerEvent) => {
-    if (!drag.current) return
-    const d = Math.max(0, Math.min(drag.current.max, e.clientX - drag.current.x0))
-    setX(d)
-    setText(d > drag.current.max * 0.55 ? 'Release' : label)
-  }
-  const up = async () => {
-    if (!drag.current) return
-    const passed = x > drag.current.max * 0.55
-    drag.current = null
+
+  const releaseBusy = () => {
+    if (!held.current) return
+    held.current = false
     busy.current = Math.max(0, busy.current - 1)
-    if (!passed) { setX(0); setText(label); return }
+  }
+  const paint = () => {
+    if (knob.current) knob.current.style.transform = `translate3d(${position.current}px, 0, 0)`
+    if (fill.current && box.current) fill.current.style.transform = `scaleX(${(position.current + knobW + 6) / Math.max(1, box.current.clientWidth)})`
+  }
+  const moveTo = (value: number) => {
+    position.current = value
+    if (frame.current === null) frame.current = requestAnimationFrame(() => { frame.current = null; paint() })
+  }
+  useEffect(() => {
+    mounted.current = true
+    const resize = new ResizeObserver(() => { if (!drag.current && !pending.current) { position.current = 0; paint() } })
+    if (box.current) resize.observe(box.current)
+    paint()
+    return () => {
+      mounted.current = false
+      if (frame.current !== null) cancelAnimationFrame(frame.current)
+      frame.current = null
+      drag.current = null
+      releaseBusy()
+      resize.disconnect()
+    }
+  }, [busy, knobW])
+  useEffect(() => { if (!drag.current && !pending.current) setText(label) }, [label])
+
+  const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!box.current || pending.current || drag.current || !e.isPrimary || e.button !== 0) return
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    drag.current = { pointerId: e.pointerId, x0: e.clientX, max: Math.max(0, box.current.clientWidth - knobW - 6) }
+    held.current = true
+    busy.current += 1
+    position.current = 0
+    overThreshold.current = false
+    setText(label)
+    setMode('dragging')
+  }
+  const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = drag.current
+    if (!gesture || gesture.pointerId !== e.pointerId) return
+    const next = Math.max(0, Math.min(gesture.max, e.clientX - gesture.x0))
+    moveTo(next)
+    const passed = next > gesture.max * 0.55
+    if (passed !== overThreshold.current) { overThreshold.current = passed; setText(passed ? 'Release' : label) }
+  }
+  const cancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || drag.current.pointerId !== e.pointerId) return
+    drag.current = null
+    releaseBusy()
+    setMode('idle'); setText(label); moveTo(0)
+  }
+  const up = async (e: React.PointerEvent<HTMLDivElement>) => {
+    const gesture = drag.current
+    if (!gesture || gesture.pointerId !== e.pointerId) return
+    const passed = gesture.max > 0 && e.clientX - gesture.x0 > gesture.max * 0.55
+    drag.current = null
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    if (!passed) { releaseBusy(); setMode('idle'); setText(label); moveTo(0); return }
+    pending.current = true
+    moveTo(gesture.max)
+    setMode('working')
     setText('Working…')
-    try {
-      const r = await onDone()
-      if (r === false) { setX(0); setText(label) }
-    } catch {
-      setX(0); setText(label)
+    try { await onDone() } catch { /* The caller reports its error; allow another attempt. */ }
+    finally {
+      pending.current = false
+      releaseBusy()
+      if (mounted.current) { setMode('idle'); setText(label); moveTo(0) }
     }
   }
   return (
-    <div ref={box} className={`slide ${big ? 'big' : ''} ${pulse ? 'pulsering' : ''}`} onClick={(e) => e.stopPropagation()}>
-      <div className="fill" style={{ background: color, opacity: 0.16, width: x + knobW }} />
+    <div ref={box} className={`slide ${mode} ${big ? 'big' : ''} ${pulse ? 'pulsering' : ''}`} aria-busy={mode === 'working'} onClick={(e) => e.stopPropagation()}>
+      <div ref={fill} className="fill" style={{ background: color, opacity: 0.16, transform: 'scaleX(0)' }} />
       <div className="lbl2">{text}</div>
-      <div className="knob" style={{ background: color, left: 3 + x }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}>›</div>
+      <div ref={knob} className="knob" style={{ background: color, transform: 'translate3d(0, 0, 0)' }} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onLostPointerCapture={cancel}>›</div>
     </div>
   )
 }

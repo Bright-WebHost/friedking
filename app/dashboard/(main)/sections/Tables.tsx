@@ -39,7 +39,7 @@ export function useFloor() {
     if (!r.length) return 'busy'
     if (r.some((o) => o.status === 'pending')) return 'new'
     if (r.every((o) => o.status === 'delivered')) return 'pay'
-    if (r.some((o) => o.status === 'ready')) return 'ready'
+    if (r.every((o) => ['ready', 'delivered'].includes(o.status))) return 'ready'
     return 'busy'
   }
   const sorted = data ? [...data.tables].sort((a, b) => RANK[stateOf(sessionOf(a))] - RANK[stateOf(sessionOf(b))] || a.table_number - b.table_number) : []
@@ -130,7 +130,6 @@ export function useFloor() {
                         catch (e) { toast(e instanceof Error ? e.message : 'Could not decline') }
                       }}>Reject</button>}
                       {['preparing', 'confirmed'].includes(o.status) && <button onClick={() => void act.setStatus(o, 'ready')}>✓ Served</button>}
-                      {o.status === 'ready' && <button onClick={() => void act.markDone(o)}>Close table &amp; mark done</button>}
                       {canEdit(o) && <button onClick={() => act.edit(o)}>Edit round</button>}
                     </div>
                   </div>
@@ -140,6 +139,7 @@ export function useFloor() {
             {s && <div className="trun"><span style={{ fontSize: 12, fontWeight: 800, color: 'var(--muted)' }}>RUNNING TOTAL</span><b>{rs(totalOf(s))}</b></div>}
             <div className="tacts" style={{ padding: '14px 0 0', borderTop: 0 }}>
               {s ? <>
+                {rounds.length > 0 && rounds.every((o) => ['ready', 'delivered'].includes(o.status)) && <button className="go" onClick={() => void act.markDone(rounds[0])}>Close table &amp; mark done</button>}
                 <button className="pay" onClick={() => closeTab(t, s)}>💵 Close &amp; pay · {rs(totalOf(s))}</button>
                 <button onClick={() => startRound(t, s)}>+ Round</button>
                 <button onClick={() => move(t, s)}>Move</button>

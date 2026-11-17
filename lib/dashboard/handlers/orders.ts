@@ -70,7 +70,7 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
   if (isBackward(from, to)) await checkPasscode(ctx, opts.passcode)
   else if (to === 'cancelled' && from !== 'cancelled' && opts.action !== 'decline') await checkCancelCode(ctx, opts.passcode)
   if (to === 'delivered' && order.order_type === 'dine-in' && order.table_session_id && from !== 'cancelled') {
-    await settleTable(ctx, order.table_session_id, { paymentCollected: opts.paymentCollected, sendInvoice: opts.sendInvoice })
+    await settleTable(ctx, order.table_session_id, { paymentCollected: opts.paymentCollected, sendInvoice: opts.sendInvoice, requireReady: true })
     return { ...order, status: to }
   }
   if (from === to && !opts.extra) return order

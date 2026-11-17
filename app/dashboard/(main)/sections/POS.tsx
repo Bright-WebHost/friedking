@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { calcTotals } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
 import type { DCategory, DCustomer, DMenuItem, DOrder, DProgram, DSession, DTable } from '@/lib/dashboard/types'
-import { Img, Loading, Modal, openPrintWindow, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
+import { Img, Loading, openPrintWindow, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
 
 const PER_CAT = 8
 type OType = 'pickup' | 'delivery' | 'dine-in'
@@ -32,7 +32,6 @@ export default function POS() {
   const [discOn, setDiscOn] = useState(false)
   const [disc, setDisc] = useState('')
   const [discountPasscode, setDiscountPasscode] = useState('')
-  const [discountModal, setDiscountModal] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const [sending, setSending] = useState(false)
   const submitting = useRef(false)
@@ -70,7 +69,7 @@ export default function POS() {
     setCart((c) => ({ ...c, [i.id]: Math.min(50, (c[i.id] ?? 0) + 1) }))
   }
   const dec = (id: string) => setCart((c) => { const n = (c[id] ?? 0) - 1; const x = { ...c }; if (n <= 0) delete x[id]; else x[id] = n; return x })
-  const clear = () => { setCart({}); setRedeemOn(false); setRedeemPts(0); setDiscOn(false); setDisc(''); setDiscountPasscode(''); setDiscountModal(false) }
+  const clear = () => { setCart({}); setRedeemOn(false); setRedeemPts(0); setDiscOn(false); setDisc(''); setDiscountPasscode('') }
 
   const openTab = (() => {
     if (type !== 'dine-in' || !table.trim() || !tabs.data) return null
@@ -87,6 +86,7 @@ export default function POS() {
     if (digits.length < 10) { setBad('phone'); toast('Enter a valid WhatsApp number'); return }
     if (type === 'delivery' && !address.trim()) { setBad('address'); toast('Delivery needs an address'); return }
     if (type === 'dine-in' && !table.trim()) { setBad('table'); toast('Dine-in needs a table number'); return }
+    if (discountPct > 0 && !discountPasscode) { setBad('discount'); toast('Enter the staff discount passcode'); return }
     submitting.current = true
     setSending(true)
     const printWindow = settings.auto_print === 'true' ? openPrintWindow() : null
@@ -116,6 +116,7 @@ export default function POS() {
       }
     } catch (e) {
       printWindow?.close()
+      if (e instanceof Error && e.message === 'Wrong discount passcode') setBad('discount')
       toast(e instanceof Error ? e.message : 'Could not create the order')
     } finally {
       submitting.current = false
@@ -221,30 +222,22 @@ export default function POS() {
             <input type="range" min={0} max={maxPts} value={Math.min(redeemPts, maxPts)} disabled={!redeemOn} onChange={(e) => setRedeemPts(Number(e.target.value))} />
           </div>}
           {isBoss(staff.role) && <div className="posdisc">
-            <div className="plh" style={{ cursor: 'pointer' }} onClick={() => setDiscOn((d) => !d)}><b>💸 Staff discount</b><span>{discOn ? 'remove' : 'add'}</span></div>
+            <div className="plh" style={{ cursor: 'pointer' }} onClick={() => { setDiscOn((d) => !d); setDiscountPasscode(''); setBad('') }}><b>💸 Staff discount</b><span>{discOn ? 'remove' : 'add'}</span></div>
             {discOn && <div style={{ marginTop: 8 }}>
               <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
                 {[5, 10, 20].map((pct) => <button key={pct} className={`btn ${Number(disc) === pct ? 'on' : 'ghost'}`} onClick={() => setDisc(String(pct))}>{pct}%</button>)}
                 <button className={`btn ${disc && ![5, 10, 20].includes(Number(disc)) ? 'on' : 'ghost'}`} onClick={() => setDisc('0')}>Custom</button>
               </div>
               {disc && ![5, 10, 20].includes(Number(disc)) && <input className="f2" type="number" min={0} max={100} placeholder="Custom percentage" value={disc} onChange={(e) => setDisc(e.target.value)} style={{ margin: 0 }} />}
+              <input className={`f2 ${bad === 'discount' ? 'ferr' : ''}`} type="password" inputMode="numeric" maxLength={6} autoComplete="off" aria-label="Staff discount passcode" aria-invalid={bad === 'discount'} placeholder="Discount passcode" value={discountPasscode} onChange={(e) => { setDiscountPasscode(e.target.value.replace(/\D/g, '')); if (bad === 'discount') setBad('') }} style={{ marginTop: 8, marginBottom: 0 }} />
             </div>}
           </div>}
           <div className="li" style={{ marginBottom: 2 }}><span>Total (incl. 5% GST)</span><span>{rs(totals.totalPaise)}</span></div>
           <div className="ctot"><span>Total</span><span>{rs(finalTotal)}</span></div>
-          <button className="cta" disabled={!lines.length || sending} onClick={() => { if (discountPct > 0) { setDiscountPasscode(''); setDiscountModal(true) } else void submit() }}>{sending ? 'Sending…' : type === 'dine-in' ? 'Send to kitchen 🚀' : 'Place order 🚀'}</button>
+          <button className="cta" disabled={!lines.length || sending} onClick={() => void submit()}>{sending ? 'Sending…' : type === 'dine-in' ? 'Send to kitchen 🚀' : 'Place order 🚀'}</button>
         </div>
       </div>
     </div>
-    {discountModal && <Modal onClose={() => setDiscountModal(false)}>
-      <h3>Enter discount passcode</h3>
-      <p>Enter the passcode to apply this staff discount.</p>
-      <input autoFocus className="f2" type="password" inputMode="numeric" maxLength={6} placeholder="Passcode" value={discountPasscode} onChange={(e) => setDiscountPasscode(e.target.value.replace(/\D/g, ''))} />
-      <div className="mrow">
-        <button onClick={() => setDiscountModal(false)}>Cancel</button>
-        <button className="ok" onClick={() => { setDiscountModal(false); void submit() }}>Place order</button>
-      </div>
-    </Modal>}
     </>
   )
 }

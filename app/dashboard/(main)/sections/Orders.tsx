@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from 'react'
 import type { DOrder } from '@/lib/dashboard/types'
+import { buildOrderCards, type BoardOrder } from '@/lib/dashboard/orderCards'
 import { isBoss } from '@/lib/dashboard/access'
 import {
   customerName, ist, Loading, phoneShort, RangeChips, rangeBounds, rs, Slide, statusLabel, useDash, useIsMobile, useLoad, usePoll, useTick, type Range,
 } from '../kit'
 import { Age, canEdit, LineItems, TypeTag, useOrderActions } from './orderParts'
 import { TableRail, useFloor } from './Tables'
+import TableOrderCard from './TableOrderCard'
 
 const ACTIVE_DINE = ['pending', 'confirmed', 'preparing', 'ready']
 
@@ -31,6 +33,14 @@ export default function Orders() {
   const act = useOrderActions(reloadAll)
 
   const orders = useMemo(() => data ?? [], [data])
+  const boardOrders = useMemo(() => {
+    const byId = new Map(orders.map((o) => [o.id, o]))
+    // An open table may have started before midnight. Keep its complete tab on today's board.
+    if (range === 'today' || range === 'all') for (const o of floor.data?.orders ?? []) {
+      if (!byId.has(o.id) || o.updated_at >= byId.get(o.id)!.updated_at) byId.set(o.id, o)
+    }
+    return buildOrderCards([...byId.values()])
+  }, [orders, floor.data, range])
   const live = orders
   const cancelled = live.filter((o) => o.status === 'cancelled')
   const valid = live.filter((o) => o.status !== 'cancelled')
@@ -41,6 +51,11 @@ export default function Orders() {
   if (error && !data) return <Loading error={error} onRetry={reload} />
 
   const fd = floor.data
+  const openTable = (o: BoardOrder) => {
+    const session = fd?.sessions.find((s) => s.id === o.table_session_id)
+    if (session) floor.setOpenId(session.table_id)
+    else act.details(o.rounds?.[0] ?? o, o.rounds)
+  }
   const openTabs = fd ? fd.sessions.reduce((sum, x) => sum + floor.totalOf(x), 0) : 0
   const stats = (
     <div className="ministats floorstats">
@@ -60,19 +75,20 @@ export default function Orders() {
       <>
         {stats}
         <TableRail floor={floor} mobile />
-        <MobileOrders orders={orders} act={act} revenue={revenue} range={range} setRange={setRange} />
-        {floor.popup(act)}{floor.modal}
+        <MobileOrders orders={boardOrders} act={act} revenue={revenue} range={range} setRange={setRange} openTable={openTable} />
+        {floor.popup(act)}{floor.modal}{act.modal}
       </>
     )
   }
 
-  // New dine-in rounds have a dedicated table column; accepted rounds follow the normal kitchen flow.
-  const dineActive = valid.filter((o) => o.order_type === 'dine-in' && ACTIVE_DINE.includes(o.status) && o.status === 'pending')
-  const prep = valid.filter((o) => ['preparing', 'confirmed'].includes(o.status))
-  const ready = valid.filter((o) => o.status === 'ready')
-  const done = valid.filter((o) => o.status === 'delivered')
+  // Each table session follows one kitchen card; a new round moves that card back to New/Preparing.
+  const dineActive = boardOrders.filter((o) => o.order_type === 'dine-in' && ACTIVE_DINE.includes(o.status) && o.status === 'pending')
+  const prep = boardOrders.filter((o) => ['preparing', 'confirmed'].includes(o.status))
+  const ready = boardOrders.filter((o) => o.status === 'ready')
+  const done = boardOrders.filter((o) => o.status === 'delivered')
 
-  const card = (o: DOrder, col: 'prep' | 'ready' | 'done' | 'dine' | 'drawer') => {
+  const card = (o: BoardOrder, col: 'prep' | 'ready' | 'done' | 'dine' | 'drawer') => {
+    if (o.rounds) return <TableOrderCard key={o.table_session_id} order={o} act={act} onOpen={() => openTable(o)} />
     const rider = riders.find((r) => r.id === o.rider_id)
     const paidUp = o.cash_collected
     return (
@@ -168,10 +184,10 @@ export default function Orders() {
 type Act = ReturnType<typeof useOrderActions>
 
 /** Phone layout: pill tabs + big buttons (Oceana's mobile Orders). New orders can be accepted from the list too. */
-function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrder[]; act: Act; revenue: number; range: Range; setRange: (r: Range) => void }) {
+function MobileOrders({ orders, act, revenue, range, setRange, openTable }: { orders: BoardOrder[]; act: Act; revenue: number; range: Range; setRange: (r: Range) => void; openTable: (o: BoardOrder) => void }) {
   const { api, toast } = useDash()
   const live = orders.filter((o) => o.status !== 'cancelled')
-  const groups: Record<string, DOrder[]> = {
+  const groups: Record<string, BoardOrder[]> = {
     new: live.filter((o) => o.status === 'pending'),
     preparing: live.filter((o) => ['preparing', 'confirmed'].includes(o.status)),
     ready: live.filter((o) => o.status === 'ready'),
@@ -204,7 +220,7 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
       <RangeChips range={range} setRange={setRange} />
       <div className="movrow">
         <div className="mostat rev"><span>Revenue</span><b>{rs(revenue)}</b></div>
-        <div className="mostat"><span>Orders</span><b>{live.length}</b></div>
+        <div className="mostat"><span>Orders</span><b>{live.reduce((count, o) => count + (o.rounds?.length ?? 1), 0)}</b></div>
       </div>
       <div className="mtabs">
         {([['new', 'New'], ['preparing', 'Preparing'], ['ready', 'Ready / Out'], ['delivered', 'Done']] as const).map(([k, l]) => (
@@ -212,7 +228,7 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
         ))}
       </div>
       <div className="molist">
-        {list.length ? list.map((o) => (
+        {list.length ? list.map((o) => o.rounds ? <TableOrderCard key={o.table_session_id} order={o} act={act} mobile onOpen={() => openTable(o)} /> : (
           <div key={o.id} className="mocard">
             <div className="morow"><b>#{o.order_number}</b><span>{ist(o.created_at)} · <Age o={o} /></span></div>
             <div className="osub">{o.order_type === 'dine-in' ? `Table ${o.table_number ?? '?'}` : customerName(o)}{o.customer?.phone ? ` · ${phoneShort(o.customer.phone)}` : ''}</div>
@@ -240,7 +256,6 @@ function MobileOrders({ orders, act, revenue, range, setRange }: { orders: DOrde
           </div>
         )) : <div className="none">Nothing here</div>}
       </div>
-      {act.modal}
     </section>
   )
 }

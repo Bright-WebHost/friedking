@@ -99,6 +99,9 @@ export function useOrderActions(reload: () => unknown) {
       try {
         const { orders } = await api.get<{ orders: DOrder[] }>('tables')
         const rounds = orders.filter((round) => round.table_session_id === o.table_session_id && round.status !== 'cancelled')
+        if (rounds.some((round) => !['ready', 'delivered'].includes(round.status))) {
+          toast('This table still has a new or preparing round. Mark all rounds ready first.'); after(); return
+        }
         totalPaise = rounds.reduce((sum, round) => sum + round.total_paise, 0)
         allPaid = rounds.length > 0 && rounds.every((round) => round.cash_collected)
       } catch (e) { toast(e instanceof Error ? e.message : 'Could not load the table total'); return }
@@ -108,7 +111,7 @@ export function useOrderActions(reload: () => unknown) {
       void run(() => api.post('orders', 'done', { orderId: o.id, paymentCollected: pay, sendInvoice: inv }),
         dine && o.table_session_id ? `Table ${o.table_number} closed · all rounds done` : `#${o.order_number} marked done${pay ? ' · payment collected' : ''}`)
     }} />)
-  }, [api, close, run, toast])
+  }, [api, close, run, toast, after])
 
   const cash = useCallback((o: DOrder) => run(() => api.post('orders', 'cash', { orderId: o.id }), `${rs(o.total_paise)} recorded for #${o.order_number}`), [api, run])
 

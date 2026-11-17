@@ -7,6 +7,7 @@ export async function settleTable(ctx: Ctx, sessionId: string, options: {
   phone?: unknown
   paymentCollected?: boolean
   sendInvoice?: boolean
+  requireReady?: boolean
 } = {}) {
   const session = check(await ctx.admin.from('table_sessions')
     .select('*, table:restaurant_tables(id, table_number)')
@@ -20,6 +21,9 @@ export async function settleTable(ctx: Ctx, sessionId: string, options: {
     .order('created_at').order('id'), 'load the rounds') ?? []
   const firstOrderId = rounds[0]?.id ?? null
   if (session.status === 'closed') return { ok: true, firstOrderId, alreadyClosed: true }
+  if (options.requireReady && rounds.some((order) => !['ready', 'delivered'].includes(order.status))) {
+    throw new HttpError(409, 'This table has a new or preparing round. Mark all rounds ready before Done, or use Close & pay to close the table explicitly.')
+  }
 
   const total = rounds.reduce((sum, order) => sum + order.total_paise, 0)
   const amount = options.amountPaise != null && options.amountPaise !== '' ? int(options.amountPaise, 'amount', 0) : total
@@ -52,6 +56,12 @@ export async function settleTable(ctx: Ctx, sessionId: string, options: {
     if (error) console.error('[dashboard] loyalty earn on close', error.message)
   }
 
+  if (options.requireReady) {
+    const unfinished = check(await ctx.admin.from('orders').select('id')
+      .eq('branch_id', ctx.branch.id).eq('table_session_id', session.id)
+      .in('status', ['pending', 'confirmed', 'preparing', 'ready']).limit(1), 'check the latest table rounds') ?? []
+    if (unfinished.length) throw new HttpError(409, 'A new round arrived while closing. Review the table before Done.')
+  }
   const closed = check(await ctx.admin.from('table_sessions').update({
     status: 'closed', closed_at: now, closed_by: ctx.staff.userId, closed_by_name: ctx.staff.name,
     closed_total_paise: amount, payment_method: 'cash', phone,

@@ -241,3 +241,13 @@ RLS is enabled throughout the schema. The browser uses the public Supabase clien
 - Rider dispatch text labels the customer phone, address, order total and cash to collect. The customer assignment notification uses the scooter emoji.
 - Checkout confirmation now says `Order placed`. WhatsApp receipt PNGs have larger branding/text and a small `Developed by Loopdot` footer.
 - Restaurant Settings no longer displays or permits edits to the promotion limit; platform administration retains that control.
+
+## Combined table cards, POS passcode, and slider follow-up
+
+- `lib/dashboard/orderCards.ts` builds a display card for each dine-in table session. Every round retains its real order ID, items, notes, and status. Different visits to the same numbered table remain separate. The card total sums its non-cancelled rounds.
+- The table card is New while a round is pending, Preparing while any accepted round is still cooking, Ready once all live rounds are ready, and Done after table settlement. New rounds join the existing card and move it back through the appropriate state. Today's board includes the complete open tab even if it began before midnight.
+- `tables.ready` advances the table's preparing rounds through the existing status logic. Pending rounds must be accepted first. The Done path now requires all rounds to be ready or already delivered, and rechecks for newly arrived active rounds before closing. Explicit Close & pay remains available to settle a table directly.
+- The table popup shows one table-level Done control. Mobile order dialogs render above the table popup so editing and payment confirmation remain usable.
+- Staff discount uses one masked passcode field inside the POS discount section. Missing codes stop submission, wrong codes highlight the field, and the server retains its existing passcode validation. The post-click passcode modal is removed.
+- `Slide` moves the knob and fill using animation-frame transforms. Pointer cancellation and lost capture reset without confirming; asynchronous actions block repeated drags. The polling lock remains held through the request and is released on cancellation, completion, or unmount.
+- Verification covered mixed table states, combined totals/items, separate visits, a round arriving during closure, repeat/recovery settlement, inline passcodes, print recovery, desktop/mobile table flows, and modal ordering. Chromium slider checks covered normal/large handles, mouse and touch, cancellation, failure/retry, duplicate prevention, and lock cleanup. Sixty drag movements caused one layout calculation in each desktop slider check.
