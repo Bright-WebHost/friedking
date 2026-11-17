@@ -774,14 +774,6 @@ export default function CustomerPage() {
         </section>
         <div className="fk-checker" />
 
-        {!loading && !loadError && tableNo === null && rules?.delivery && (
-          <div className="mx-4 mt-3 flex items-center gap-2 rounded-xl border border-fk-line bg-fk-bg px-3.5 py-2.5 text-xs font-semibold text-fk-muted">
-            <Bike className="h-4 w-4 shrink-0 text-fk-red" />
-            <span>{rules.feePaise > 0 ? `Delivery fee ${formatPrice(rules.feePaise)}` : 'Delivery available'}</span>
-            {rules.freeAbovePaise > 0 && <span className="font-bold text-green-700">· Free above {formatPrice(rules.freeAbovePaise)}</span>}
-          </div>
-        )}
-
         {!loading && !loadError && <OfferBanner promotions={promotions} />}
 
         {/* Category rail */}
