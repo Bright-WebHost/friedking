@@ -305,14 +305,29 @@ declare b branches%rowtype; v_phone text := public.fk_wa_phone(p_phone); v_cust 
 begin
   select * into b from branches where slug = p_branch;
   if not found then return jsonb_build_object('result', 'error'); end if;
-  v_type := case lower(coalesce(p_type, '')) when 'takeaway' then 'pickup' when 'pickup' then 'pickup' when 'dine-in' then 'dine-in' else 'delivery' end;
-  -- a customer who scanned a table QR in the last 6 hours is eating in: attach the order to their table
-  select s.id, t.table_number into v_sid, v_tno
-    from table_sessions s join restaurant_tables t on t.id = s.table_id
-   where s.branch_id = b.id and s.status = 'open' and s.phone = v_phone and s.opened_at > now() - interval '6 hours'
-   order by s.opened_at desc limit 1;
-  if v_sid is not null then v_type := 'dine-in';
-  elsif v_type = 'dine-in' then v_type := 'pickup';  -- no table known: treat as takeaway rather than lose track of it
+  v_type := case lower(coalesce(p_type, ''))
+    when 'takeaway' then 'pickup'
+    when 'pickup' then 'pickup'
+    when 'delivery' then 'delivery'
+    when 'dine-in' then 'dine-in'
+    else 'delivery'
+  end;
+
+  -- Only attach to a table session if the order is specifically dine-in or no type was specified.
+  -- An explicit delivery or takeaway/pickup order must NEVER be overridden to dine-in!
+  if lower(coalesce(p_type, '')) = 'dine-in' or (coalesce(p_type, '') = '' and v_type not in ('delivery', 'pickup')) then
+    select s.id, t.table_number into v_sid, v_tno
+      from table_sessions s join restaurant_tables t on t.id = s.table_id
+     where s.branch_id = b.id and s.status = 'open' and s.phone = v_phone and s.opened_at > now() - interval '6 hours'
+     order by s.opened_at desc limit 1;
+    if v_sid is not null then
+      v_type := 'dine-in';
+    elsif v_type = 'dine-in' then
+      v_type := 'pickup';  -- no table known: treat as takeaway rather than lose track of it
+    end if;
+  else
+    v_sid := null;
+    v_tno := null;
   end if;
 
   insert into customers (branch_id, phone, name, source) values (b.id, v_phone, nullif(trim(p_name), ''), 'whatsapp')

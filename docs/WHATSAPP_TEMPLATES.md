@@ -77,10 +77,47 @@ Riders always get this template (they rarely message the number first). The butt
 
 ---
 
-## 5. Optional later: `friedking_promo_en` (Blast / offers)
+## 5. `friedking_promo_en` / `friedking_offers` (Marketing / Blasts)
 
-Category **Marketing**, body e.g. `Hi {{1}}, {{2}} Order now: https://friedking.vercel.app/`. Marketing messages cost more
-and customers must have agreed to receive them. Create it only when the Blast page is ready to use.
+| Field | Value |
+|---|---|
+| Category | **Marketing** |
+| Header | **Image** (Upload any promo poster sample) |
+| Body | See recommended generic copy below |
+| Button | **Call to action (URL)**: Text `Order Now`, URL `https://friedking.vercel.app/` |
+
+> [!TIP]
+> **Why Generic Text is Best**: When the template body text is generic and creative, you never have to submit a new template for approval whenever a new offer starts. The specific offer (e.g. *"Buy 1 Get 1 Free on Burgers"*, *"Flat ₹100 Off"*, *"Weekend Broast Special"*) goes directly into the **Header Image**, while the text provides an attractive, evergreen invitation to order!
+
+### Recommended Copy Options for YCloud / Meta Review:
+
+#### Option 1 (Craving-Driven & Warm — Recommended):
+```
+Craving something hot, fresh, and irresistibly crispy, {{1}}? 🍗✨
+
+We've got an exclusive treat waiting just for you! Check out the delicious offer above, freshly crafted to make your day extra special.
+
+Tap the button below to browse our menu and grab your favourites now!
+```
+*Sample value:* `{{1}}` = `Maithri`
+
+#### Option 2 (Vibrant & Celebration-Ready):
+```
+Hey {{1}}! Great moments deserve great food. 🍔🔥
+
+Whether you're treating yourself, hanging out with friends, or having a family feast, we've got an exciting surprise for you in the image above!
+
+Order hot & fresh from Fried King today. Fresh flavours, fast delivery!
+```
+
+#### Option 3 (Short & Premium):
+```
+Hello {{1}}! Freshly fried, packed with flavour, and made just the way you love it. 🍗🍟
+
+Take a look at today's exclusive offer above and treat your tastebuds to something special.
+
+Tap below to order your favourites in a few clicks!
+```
 
 ---
 
