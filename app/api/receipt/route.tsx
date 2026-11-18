@@ -65,6 +65,7 @@ export async function GET(request: NextRequest) {
     ])
     const s = Object.fromEntries((rows ?? []).map((r) => [r.key, r.value ?? '']))
     const phone = branch?.phone || (s.whatsapp_number ? `+91 ${s.whatsapp_number}` : '')
+    const branchName = (branch?.name ? branch.name.replace(/^Fried\s+King\s+/i, '').trim() : '') || branch?.name || 'Pandeshwar'
 
     const origin = request.nextUrl.origin
     const [regular, semi, bold, logoFile] = await Promise.all([
@@ -85,16 +86,11 @@ export async function GET(request: NextRequest) {
 
     const typeLabel = order.order_type === 'pickup' ? 'TAKEAWAY' : String(order.order_type).toUpperCase()
     const payLabel = order.cash_collected ? 'PAID' : order.order_type === 'delivery' ? 'CASH ON DELIVERY' : 'PAY AT COUNTER'
-    const detail: Array<[string, string]> = [['Token No.', String(order.token_number ?? '—')], ['Bill No.', String(order.order_number)], ['Name', customer?.name || 'Guest'], ['Phone', custPhone]]
-    if (order.order_type === 'delivery' && order.delivery_address) detail.push(['Address', order.delivery_address])
-    if (order.order_type === 'dine-in' && order.table_number) detail.push(['Table', String(order.table_number)])
-    if (order.special_instructions) detail.push(['Note', order.special_instructions])
 
     const summary: Array<[string, string]> = [['Item total', rs(order.subtotal_paise)]]
     if (order.discount_paise > 0) summary.push(['Discount', `-${rs(order.discount_paise)}`])
     if (order.loyalty_discount_paise > 0) summary.push(['Reward points', `-${rs(order.loyalty_discount_paise)}`])
     summary.push(['GST (CGST + SGST)', rs(order.gst_paise)])
-    // Delivery fee = whatever the total has beyond items, GST and discounts (no extra column needed).
     const fee = order.total_paise - (order.subtotal_paise - order.discount_paise - order.loyalty_discount_paise + order.gst_paise)
     if (order.order_type === 'delivery' && fee > 0) summary.push(['Delivery fee', rs(fee)])
 
@@ -103,79 +99,149 @@ export async function GET(request: NextRequest) {
       <div style={{ display: 'flex', flexDirection: 'column', width: W }}>
         {[0, 1].map((row) => (
           <div key={row} style={{ display: 'flex', height: SQ }}>
-            {Array.from({ length: COLS }, (_, i) => <div key={i} style={{ width: SQ, height: SQ, backgroundColor: (i + row + (flip ? 1 : 0)) % 2 === 0 ? RED : '#ffffff' }} />)}
+            {Array.from({ length: COLS }, (_, i) => (
+              <div key={i} style={{ width: SQ, height: SQ, backgroundColor: (i + row + (flip ? 1 : 0)) % 2 === 0 ? RED : '#ffffff' }} />
+            ))}
           </div>
         ))}
       </div>
     )
 
     const wrapLines = (t: string, per: number) => Math.max(1, Math.ceil(t.length / per))
-    const detailH = detail.reduce((h, [, v]) => h + 18 + 48 * wrapLines(v, 32), 0)
-    const itemsH = items.reduce((h, it) => h + 82 + 46 * (wrapLines(it.name_snapshot, 30) - 1) + (it.notes ? 44 * wrapLines(it.notes, 48) : 0), 0)
-    const addrLines = branch?.address ? wrapLines(branch.address, 54) : 0
-    const height = 340 + addrLines * 40 + 50 + 250 + detailH + itemsH + summary.length * 48 + 130 + 210 + (s.gstin ? 38 : 0)
+    const itemsH = items.reduce((h, it) => h + 92 + 48 * (wrapLines(it.name_snapshot, 26) - 1) + (it.notes ? 44 * wrapLines(it.notes, 40) : 0), 0)
+    const extraDeliveryH = order.order_type === 'delivery' && order.delivery_address ? 75 : 0
+    const extraNotesH = order.special_instructions ? 65 : 0
+    const height = 255 + 55 + 195 + 75 + extraDeliveryH + extraNotesH + 75 + itemsH + (summary.length * 46 + 45) + 140 + 185 + (s.gstin ? 30 : 0) + 55 + 5
 
     return new ImageResponse(
       (
         <div style={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column', backgroundColor: '#ffffff', fontFamily: 'Poppins' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', backgroundColor: RED, padding: '28px 40px 24px' }}>
-            <img src={logo} alt="Fried King" style={{ width: 340, height: 100, objectFit: 'contain' }} />
-            {branch?.address ? <span style={{ fontSize: 30, color: '#ffffff', marginTop: 14, textAlign: 'center', lineHeight: 1.35 }}>{branch.address}</span> : null}
-            {phone ? <span style={{ fontSize: 30, color: '#ffffff', marginTop: 4 }}>{phone}</span> : null}
-            {s.gstin ? <span style={{ fontSize: 26, color: '#ffe0dc', marginTop: 6 }}>GSTIN: {s.gstin}</span> : null}
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: RED, padding: '32px 44px', width: W }}>
+            {/* Left spacer to keep logo centered */}
+            <div style={{ display: 'flex', width: 240 }} />
+            {/* Center: Logo */}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <img src={logo} alt="Fried King" style={{ width: 340, height: 190, objectFit: 'contain' }} />
+            </div>
+            {/* Right: Branch badge */}
+            <div style={{ display: 'flex', width: 240, justifyContent: 'flex-end', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#ffffff', borderRadius: 999, padding: '10px 24px', boxShadow: '0 4px 12px rgba(0,0,0,0.12)' }}>
+                <span style={{ fontSize: 24, fontWeight: 700, color: RED, letterSpacing: 1.5, textTransform: 'uppercase' }}>{branchName}</span>
+              </div>
+            </div>
           </div>
           {checker(false)}
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '30px 40px 0' }}>
-            <span style={{ fontSize: 54, fontWeight: 700, color: '#1c1c1c', letterSpacing: 4 }}>{isTable ? `TABLE ${order.table_number ?? ''}` : `FK-${order.order_number}`}</span>
-            <span style={{ fontSize: 30, color: '#686868', marginTop: 6 }}>{when}</span>
-            <div style={{ display: 'flex', marginTop: 18, color: RED, fontSize: 30, fontWeight: 700, letterSpacing: 1, padding: '12px 30px', borderRadius: 999, border: `4px solid ${RED}` }}>
-              {typeLabel} · {payLabel}
+          {/* Order Info Row */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '32px 44px 20px', borderBottom: '2px dashed #f2b8ae' }}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: 54, fontWeight: 700, color: '#111827', letterSpacing: 2 }}>
+                  {isTable ? `TABLE ${order.table_number ?? ''}` : `FK-${order.order_number}`}
+                </span>
+                {order.token_number ? (
+                  <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#fee2e2', border: `2px solid ${RED}`, borderRadius: 10, padding: '4px 14px', marginLeft: 16 }}>
+                    <span style={{ fontSize: 24, fontWeight: 700, color: RED, letterSpacing: 1 }}>TOKEN #{order.token_number}</span>
+                  </div>
+                ) : null}
+              </div>
+              <span style={{ fontSize: 26, color: '#6b7280', marginTop: 8, fontWeight: 400 }}>{when}</span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: RED, borderRadius: 999, padding: '10px 24px' }}>
+                <span style={{ fontSize: 26, fontWeight: 700, color: '#ffffff', letterSpacing: 1.5 }}>
+                  {order.order_type === 'dine-in' && order.table_number && !isTable
+                    ? `DINE-IN · TABLE ${order.table_number}`
+                    : typeLabel}
+                </span>
+              </div>
+              <span style={{ fontSize: 24, fontWeight: 700, color: order.cash_collected ? '#059669' : '#b91c1c', marginTop: 10, letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                {payLabel}
+              </span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', padding: '0 40px', marginTop: 24 }}>
-            <div style={{ display: 'flex', borderTop: '2px dashed #f2b8ae', marginBottom: 14 }} />
-            {detail.map(([k, v]) => (
-              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 20, marginBottom: 18 }}>
-                <span style={{ fontSize: 30, color: '#686868', width: 230, flexShrink: 0 }}>{k}</span>
-                <span style={{ fontSize: 32, fontWeight: 600, color: '#1c1c1c', textAlign: 'right', maxWidth: 720, lineHeight: 1.4 }}>{v}</span>
+          {/* Customer Bar */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f9fafb', borderRadius: 16, padding: '16px 28px', margin: '20px 44px 10px', border: '1.5px solid #f3f4f6' }}>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ fontSize: 26, color: '#6b7280', marginRight: 10 }}>Customer:</span>
+              <span style={{ fontSize: 28, fontWeight: 700, color: '#111827' }}>{customer?.name || 'Guest'}</span>
+            </div>
+            {custPhone ? (
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: 28, fontWeight: 600, color: '#374151' }}>{custPhone}</span>
               </div>
-            ))}
-            <div style={{ display: 'flex', borderTop: '2px dashed #f2b8ae', margin: '10px 0 14px' }} />
+            ) : null}
+          </div>
 
+          {/* Delivery Address (if delivery) */}
+          {order.order_type === 'delivery' && order.delivery_address ? (
+            <div style={{ display: 'flex', backgroundColor: '#fff7ed', border: '1.5px solid #ffedd5', borderRadius: 14, padding: '14px 24px', margin: '6px 44px 10px' }}>
+              <span style={{ fontSize: 24, color: '#c2410c', fontWeight: 600, marginRight: 8 }}>Delivery:</span>
+              <span style={{ fontSize: 24, color: '#7c2d12', flex: 1 }}>{order.delivery_address}</span>
+            </div>
+          ) : null}
+
+          {/* Special Instructions (if any) */}
+          {order.special_instructions ? (
+            <div style={{ display: 'flex', backgroundColor: '#fef2f2', border: '1.5px solid #fee2e2', borderRadius: 14, padding: '14px 24px', margin: '6px 44px 10px' }}>
+              <span style={{ fontSize: 24, color: RED, fontWeight: 600, marginRight: 8 }}>Note:</span>
+              <span style={{ fontSize: 24, color: '#7f1d1d', flex: 1 }}>{order.special_instructions}</span>
+            </div>
+          ) : null}
+
+          {/* Items Container */}
+          <div style={{ display: 'flex', flexDirection: 'column', padding: '0 44px', marginTop: 10 }}>
+            {/* Column Headers */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 0 10px', borderBottom: '2px solid #e5e7eb' }}>
+              <span style={{ fontSize: 24, fontWeight: 700, color: '#9ca3af', letterSpacing: 1.5, textTransform: 'uppercase' }}>ITEM</span>
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span style={{ fontSize: 24, fontWeight: 700, color: '#9ca3af', letterSpacing: 1.5, textTransform: 'uppercase', marginRight: 60 }}>QTY</span>
+                <span style={{ fontSize: 24, fontWeight: 700, color: '#9ca3af', letterSpacing: 1.5, textTransform: 'uppercase' }}>AMOUNT</span>
+              </div>
+            </div>
+
+            {/* Items */}
             {items.map((it, i) => (
-              <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: '2px dashed #f2c7bf', padding: '14px 0' }}>
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', borderBottom: '2px dashed #f2c7bf', padding: '18px 0' }}>
                 <div style={{ display: 'flex', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', flex: 1, fontSize: 36, fontWeight: 600, color: '#1c1c1c', lineHeight: 1.35 }}>{it.name_snapshot}</span>
-                  <span style={{ display: 'flex', width: 90, justifyContent: 'center', fontSize: 32, color: '#525252' }}>x{it.quantity}</span>
-                  <span style={{ display: 'flex', width: 220, justifyContent: 'flex-end', fontSize: 34, fontWeight: 700, color: '#1c1c1c' }}>{rs(it.line_total_paise)}</span>
+                  <span style={{ display: 'flex', flex: 1, fontSize: 42, fontWeight: 700, color: '#111827', lineHeight: 1.3 }}>{it.name_snapshot}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f3f4f6', borderRadius: 10, padding: '6px 18px', margin: '0 24px' }}>
+                    <span style={{ fontSize: 34, fontWeight: 700, color: '#374151' }}>x{it.quantity}</span>
+                  </div>
+                  <span style={{ display: 'flex', width: 220, justifyContent: 'flex-end', fontSize: 44, fontWeight: 700, color: '#111827' }}>{rs(it.line_total_paise)}</span>
                 </div>
-                {it.notes ? <span style={{ fontSize: 30, color: RED, marginTop: 7, lineHeight: 1.4 }}>Note: {it.notes}</span> : null}
+                {it.notes ? <span style={{ fontSize: 28, color: RED, marginTop: 8, lineHeight: 1.4 }}>Note: {it.notes}</span> : null}
               </div>
             ))}
 
-            <div style={{ display: 'flex', flexDirection: 'column', margin: '14px 0 18px' }}>
+            {/* Summary Lines */}
+            <div style={{ display: 'flex', flexDirection: 'column', margin: '20px 0 20px' }}>
               {summary.map(([k, v]) => (
                 <div key={k} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-                  <span style={{ fontSize: 30, color: '#686868' }}>{k}</span>
-                  <span style={{ fontSize: 30, color: '#3f3f3f' }}>{v}</span>
+                  <span style={{ fontSize: 30, color: '#6b7280' }}>{k}</span>
+                  <span style={{ fontSize: 30, fontWeight: 600, color: '#1f2937' }}>{v}</span>
                 </div>
               ))}
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: RED, borderRadius: 24, padding: '22px 32px' }}>
-              <span style={{ fontSize: 32, color: '#ffffff', letterSpacing: 5 }}>TOTAL</span>
-              <span style={{ fontSize: 64, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
+            {/* TOTAL Card */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: RED, borderRadius: 24, padding: '24px 36px' }}>
+              <span style={{ fontSize: 34, color: '#ffffff', letterSpacing: 5, fontWeight: 700 }}>TOTAL</span>
+              <span style={{ fontSize: 66, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexGrow: 1, justifyContent: 'center', padding: '24px 40px', textAlign: 'center' }}>
-            <div style={{ display: 'flex', fontSize: 32, color: '#3f3f3f' }}>
+          {/* Footer */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px 44px 18px', textAlign: 'center' }}>
+            <div style={{ display: 'flex', fontSize: 32, color: '#374151' }}>
               Thank you for ordering with <span style={{ color: RED, fontWeight: 700, marginLeft: 10 }}>Fried King</span>!
             </div>
-            {phone ? <span style={{ fontSize: 28, color: '#525252', marginTop: 8 }}>Questions? WhatsApp us on {phone}</span> : null}
-            <span style={{ fontSize: 23, color: '#757575', marginTop: 24 }}>Developed by Loopdot</span>
+            {phone ? <span style={{ fontSize: 26, color: '#6b7280', marginTop: 8 }}>Questions? WhatsApp us on {phone}</span> : null}
+            {s.gstin ? <span style={{ fontSize: 22, color: '#6b7280', marginTop: 4 }}>GSTIN: {s.gstin}</span> : null}
+            <span style={{ fontSize: 22, color: '#9ca3af', marginTop: 20 }}>Developed by Loopdot</span>
           </div>
           {checker(true)}
         </div>
