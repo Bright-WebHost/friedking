@@ -25,3 +25,7 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 *.tsbuildinfo
+content-drafts/*.docx
+content-drafts/media/
+**/Claude outputs/
+*.mp4

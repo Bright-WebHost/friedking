@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { calcTotals } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
 import type { DCategory, DCustomer, DMenuItem, DOrder, DProgram, DSession, DTable } from '@/lib/dashboard/types'
-import { Img, Loading, openPrintWindow, phoneShort, printReceipt, rs, useDash, useLoad } from '../kit'
+import { Img, Loading, openPrintWindow, phoneShort, printReceipt, rs, useDash, useLoad, usePoll } from '../kit'
 
 const PER_CAT = 8
 type OType = 'pickup' | 'delivery' | 'dine-in'
@@ -14,6 +14,14 @@ export default function POS() {
   const { api, toast, handoff, staff, settings, branch, go } = useDash()
   const { data, error, reload } = useLoad(() => api.get<PosData>('pos'), [api])
   const tabs = useLoad(() => api.get<{ tables: DTable[]; sessions: DSession[]; orders: DOrder[] }>('tables'), [api])
+  usePoll(tabs.reload, 5000)
+
+  const tables = useMemo(() => {
+    return [...(tabs.data?.tables ?? [])].sort((a, b) => a.table_number - b.table_number)
+  }, [tabs.data])
+  const occupiedIds = useMemo(() => {
+    return new Set((tabs.data?.sessions ?? []).map((s) => s.table_id))
+  }, [tabs.data])
 
   const init = useRef(handoff.current)
   useEffect(() => { handoff.current = null }, [handoff])
@@ -85,7 +93,17 @@ export default function POS() {
     setBad('')
     if (digits.length < 10) { setBad('phone'); toast('Enter a valid WhatsApp number'); return }
     if (type === 'delivery' && !address.trim()) { setBad('address'); toast('Delivery needs an address'); return }
-    if (type === 'dine-in' && !table.trim()) { setBad('table'); toast('Dine-in needs a table number'); return }
+    if (type === 'dine-in') {
+      if (!table.trim()) { setBad('table'); toast('Dine-in needs a table number'); return }
+      const t = tabs.data?.tables.find((x) => String(x.table_number) === table.trim())
+      const isOccupied = t && occupiedIds.has(t.id)
+      const isCurrentHandoff = init.current?.table && String(init.current.table) === table.trim()
+      if (isOccupied && !isCurrentHandoff) {
+        setBad('table')
+        toast(`Table ${table} is occupied. Pick a free table.`)
+        return
+      }
+    }
     if (discountPct > 0 && !discountPasscode) { setBad('discount'); toast('Enter the staff discount passcode'); return }
     submitting.current = true
     setSending(true)
@@ -215,7 +233,30 @@ export default function POS() {
             <input className={`f2 ${bad === 'address' ? 'ferr' : ''}`} placeholder="Delivery address *" value={address} onChange={(e) => setAddress(e.target.value)} />
             <input className="f2" placeholder="Pincode" inputMode="numeric" maxLength={6} value={pincode} onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))} />
           </>}
-          {type === 'dine-in' && <input className={`f2 ${bad === 'table' ? 'ferr' : ''}`} placeholder="Table number *" inputMode="numeric" value={table} onChange={(e) => setTable(e.target.value.replace(/\D/g, ''))} />}
+          {type === 'dine-in' && (
+            <select
+              className={`f2 ${bad === 'table' ? 'ferr' : ''}`}
+              value={table}
+              onChange={(e) => {
+                setTable(e.target.value)
+                if (bad === 'table') setBad('')
+              }}
+            >
+              <option value="">Select table *</option>
+              {tabs.loading && !tables.length && <option value="" disabled>Loading tables…</option>}
+              {!tabs.loading && !tables.length && <option value="" disabled>No tables configured</option>}
+              {tables.map((t) => {
+                const isOccupied = occupiedIds.has(t.id)
+                const isCurrentHandoff = init.current?.table && String(init.current.table) === String(t.table_number)
+                const disabled = isOccupied && !isCurrentHandoff
+                return (
+                  <option key={t.id} value={t.table_number} disabled={disabled}>
+                    Table {t.table_number}{isOccupied ? ' (Occupied)' : ''}
+                  </option>
+                )
+              })}
+            </select>
+          )}
           {maxPts > 0 && program && <div className="posloy">
             <div className="plh"><label style={{ display: 'flex', gap: 7, alignItems: 'center', fontWeight: 700 }}><input type="checkbox" checked={redeemOn} onChange={(e) => { setRedeemOn(e.target.checked); if (e.target.checked && !redeemPts) setRedeemPts(maxPts) }} /> 🎁 Redeem points</label>
               <span>{redeemOn ? `${pts} pts · − ${rs(loyaltyPaise)}` : 'off'}</span></div>

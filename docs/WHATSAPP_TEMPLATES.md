@@ -9,7 +9,7 @@ Templates are only needed when the customer has NOT messaged us in the last 24 h
 > and Meta showed the WhatsApp account as **Unverified** (quality rating and messaging limits "Unavailable").
 > Fix that first (phone number verification, then Meta business verification). Then create the templates below.
 
-Already approved: `friedking_order_update` (named variables). Not used yet.
+Already approved: `friedking_order_updates` (utility, named variables; replaces the old `friedking_order_update` which was marketing category). Not used yet.
 
 ---
 
