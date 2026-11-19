@@ -50,10 +50,16 @@ export async function POST(req: NextRequest) {
       await admin.from('orders').delete().eq('id', order.id)
       throw lineError
     }
-    const { error: eventError } = await admin.from('order_events').insert({
-      order_id: order.id, branch_id: branch.id, event_type: 'order_created',
-      payload: { orderId: order.id, orderNumber: order.order_number, branchSlug: branch.slug, branchName: branch.name, customerName: name, customerPhone: phone, orderType: 'pickup', paymentMethod: 'cash', deliveryAddress: null, specialInstructions: 'POS counter order', items: lines.map((line) => ({ name: line.name, quantity: line.quantity, unitPricePaise: line.pricePaise })), ...totals },
-    })
+    const { error: eventError } = await admin.from('order_events').insert([
+      {
+        order_id: order.id, branch_id: branch.id, event_type: 'order_created',
+        payload: { orderId: order.id, orderNumber: order.order_number, branchSlug: branch.slug, branchName: branch.name, customerName: name, customerPhone: phone, orderType: 'pickup', paymentMethod: 'cash', deliveryAddress: null, specialInstructions: 'POS counter order', items: lines.map((line) => ({ name: line.name, quantity: line.quantity, unitPricePaise: line.pricePaise })), ...totals },
+      },
+      {
+        order_id: order.id, branch_id: branch.id, event_type: 'order_status_changed',
+        payload: { orderNumber: order.order_number, status: 'preparing', previousStatus: 'pending', orderType: 'pickup', customerNotification: { kind: 'accepted', receipt: true } },
+      }
+    ])
     if (eventError) console.error('[POST /api/dashboard/pos] order event:', eventError.message)
     return NextResponse.json({ orderId: order.id, orderNumber: order.order_number, totalPaise: totals.totalPaise }, { status: 201 })
   } catch (error) {

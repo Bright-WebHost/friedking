@@ -198,6 +198,15 @@ export const posHandler: Handler = {
         subtotalPaise: totals.subtotalPaise, gstPaise: totals.gstPaise, totalPaise: total,
         ...(sessionId && tableHasPreviousRounds ? { customerNotification: { kind: 'table_round_added', windowOnly: true, tableNumber, roundTotalPaise: total, tableRunningTotalPaise } } : {}),
       })
+      if (phone) {
+        await emitOrderEvent(ctx, order.id, 'order_status_changed', {
+          orderNumber: order.order_number,
+          status: 'preparing',
+          previousStatus: 'pending',
+          orderType: type,
+          customerNotification: { kind: 'accepted', receipt: true },
+        })
+      }
       await audit(ctx, { orderId: order.id, orderNumber: order.order_number, action: 'pos_order', to: 'preparing', detail: `${type}${tableNumber ? ` · table ${tableNumber}` : ''} · by ${ctx.staff.name}` })
       return { orderId: order.id, orderNumber: order.order_number, totalPaise: total }
     },
