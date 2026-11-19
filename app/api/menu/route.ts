@@ -83,5 +83,5 @@ export async function GET(req: NextRequest) {
     .map((c) => ({ id: c.id, name: c.name }))
 
   // Same for every customer: cached at the edge for a minute, with stale data served while refreshing.
-  return NextResponse.json({ branch, categories, items }, { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' } })
+  return NextResponse.json({ branch, categories, items }, { headers: { 'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=300' } })
 }

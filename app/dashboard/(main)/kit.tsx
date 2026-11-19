@@ -369,7 +369,7 @@ export function useTick(ms = 20000) {
  * Background refresh like Oceana's 3 s poll: skipped while the tab is hidden or a
  * slider/popup is busy; also runs on "Refresh now" and after any order change.
  */
-export function usePoll(fn: () => unknown, ms = 5000) {
+export function usePoll(fn: () => unknown, ms = 10000) {
   const { busy } = useDash()
   const ref = useRef(fn)
   ref.current = fn
