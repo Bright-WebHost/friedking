@@ -30,20 +30,19 @@ Used by: n8n `Fried King | Send OTP`. Name is stored in `branch_settings.otp_tem
 
 ---
 
-## 2. `friedking_order_receipt` (receipt after staff accept an order)
+## 2. `friedking_order_updates` (Active - receipt sent after order creation/acceptance)
 
 | Field | Value |
 |---|---|
 | Category | **Utility** |
-| Header | **Image** (upload any sample receipt picture as the example) |
-| Body | `Hi {{1}}, your Fried King order {{2}} has been accepted. Your receipt is attached. Total: {{3}}. Thank you for ordering with us!` |
+| Status | **Approved** |
+| Header | **Image** (PNG receipt dynamically drawn by `/api/receipt?order=<id>`) |
+| Body | `Hi {{customer_name}}, your Fried King order #{{order_number}} is {{status}}.\n\nTotal: ₹{{total}}\nBranch: {{branch}}\n\nThank you for ordering with Fried King` |
 | Footer | (none) |
 | Buttons | (none) |
 
-Sample values for review: `{{1}}` = Maithri, `{{2}}` = FK-1021, `{{3}}` = Rs 487.20
-
-Variables are sent in this order: first name, order number (FK-...), total with currency.
-The header image is the receipt drawn by the app (`/api/receipt?order=<id>`).
+- **Named parameters:** `customer_name`, `order_number`, `status`, `total`, `branch`.
+- **Used by:** n8n `Fried King | Order Events` workflow whenever sending receipts to customers outside the 24-hour WhatsApp messaging window. (Customers inside the 24h window receive the free-form branded receipt image directly).
 
 ---
 
