@@ -7,6 +7,7 @@ import {
   Home, MapPin, Minus, Plus, Search, ShoppingBag, SlidersHorizontal, Store, User, Utensils, X,
 } from 'lucide-react'
 import VerifyCard, { type VerifyState } from '@/components/VerifyCard'
+import RewardsCard from '@/components/RewardsCard'
 import AccountPanel, { type Account } from '@/components/AccountPanel'
 import AddressSheet from '@/components/AddressSheet'
 import TableTab, { type TableInfo } from '@/components/TableTab'
@@ -111,6 +112,9 @@ export default function CustomerPage() {
   const [account, setAccount] = useState<Account>({ loggedIn: false })
   const [accountOpen, setAccountOpen] = useState(false)
   const [saveAddr, setSaveAddr] = useState(true)
+  // Reward points the customer chose to use (preview; the server decides the real amount).
+  const [reward, setReward] = useState({ use: false, valuePaise: 0, points: 0 })
+  useEffect(() => { if (screen !== 'checkout') setReward({ use: false, valuePaise: 0, points: 0 }) }, [screen])
   const loadAccount = useCallback(async () => {
     try {
       const d = await readJson(await fetch('/api/account/me', { cache: 'no-store' }))
@@ -269,7 +273,8 @@ export default function CustomerPage() {
   // ── Delivery fee and the free-delivery offer (rules come from Dashboard > Settings) ──
   const isDelivery = orderType === 'delivery'
   const deliveryFeePaise = isDelivery && rules ? deliveryFeeFor(rules, totals.subtotalPaise) : 0
-  const grandTotalPaise = totals.totalPaise + deliveryFeePaise
+  const rewardPaise = tableNo === null && reward.use ? reward.valuePaise : 0
+  const grandTotalPaise = Math.round((totals.totalPaise - rewardPaise + deliveryFeePaise) / 100) * 100
   const offerPaise = isDelivery && rules && rules.freeAbovePaise > 0 ? rules.freeAbovePaise : 0
   const unlocked = offerPaise > 0 && cartCount > 0 && totals.subtotalPaise >= offerPaise
   const wasUnlocked = useRef(false)
@@ -358,6 +363,7 @@ export default function CustomerPage() {
         specialInstructions: notes.trim() || null,
         idempotencyKey: idempotencyKey.current,
         items: cart.map((c) => ({ itemId: c.item.id, quantity: c.quantity, note: c.specialNote?.trim() || undefined })),
+        redeemPoints: !dineIn && reward.use && reward.points > 0,
       }
       const res = await fetch('/api/order', {
         method: 'POST',
@@ -497,6 +503,7 @@ export default function CustomerPage() {
               <span>Cash</span>·
               <span>{orderType === 'pickup' ? 'Takeaway' : 'Delivery'}</span>
             </p>
+            {!!placed.pointsRedeemed && <p className="mt-3 text-sm font-semibold text-amber-700">🎁 {placed.pointsRedeemed} reward points used on this order</p>}
             <p className="mt-4 text-sm text-fk-muted">The branch will confirm your order shortly.</p>
             <a
               href={`https://wa.me/${rules?.whatsapp ?? '919742175222'}`}
@@ -664,6 +671,17 @@ export default function CustomerPage() {
             <textarea className={`${input} resize-none`} rows={2} maxLength={400} placeholder="Extra spicy, no mayo..." value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Card>
 
+          {tableNo === null && branch && cart.length > 0 && (
+            <RewardsCard
+              branchSlug={branch.slug}
+              linkToken={linked ? linkToken : null}
+              verifySecret={vs.enabled && vs.verified ? vs.secret : null}
+              loggedIn={account.loggedIn}
+              items={cart.map((c) => ({ itemId: c.item.id, quantity: c.quantity }))}
+              onChange={setReward}
+            />
+          )}
+
           <Card title="Order summary">
             <ul className="space-y-2.5 text-sm">
               {cart.map((c) => (
@@ -676,7 +694,7 @@ export default function CustomerPage() {
                 </li>
               ))}
             </ul>
-            <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} />
+            <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} pointsPaise={rewardPaise} points={reward.points} />
             {offerPaise > 0 && cart.length > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mt-3" />}
             {minOrderShort > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12.5px] font-semibold text-amber-800">Add {formatPrice(minOrderShort)} more to reach the minimum delivery order.</p>}
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-fk-muted"><span aria-hidden>💵</span> Pay by cash {orderType === 'delivery' ? 'on delivery' : orderType === 'dine-in' ? 'at the counter' : 'at the counter'}. GST is added to the subtotal.</p>
@@ -1024,7 +1042,7 @@ export default function CustomerPage() {
               </ul>
               <div className="px-5 pb-5 pt-1">
                 {offerPaise > 0 && <FreeDeliveryProgress subtotalPaise={totals.subtotalPaise} targetPaise={offerPaise} className="mb-1" />}
-                <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} />
+                <TotalsBlock {...totals} totalPaise={grandTotalPaise} deliveryFeePaise={deliveryFeePaise} baseFeePaise={isDelivery ? rules?.feePaise ?? 0 : 0} pointsPaise={rewardPaise} points={reward.points} />
                 <button
                   onClick={goToCheckout}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-[14px] bg-fk-red py-4 font-bold text-white transition hover:bg-fk-red-dark"
@@ -1293,8 +1311,8 @@ function QtyControl({ qty, name, onChange }: { qty: number; name: string; onChan
   )
 }
 
-function TotalsBlock({ subtotalPaise, gstPaise, totalPaise, deliveryFeePaise = 0, baseFeePaise = 0 }: {
-  subtotalPaise: number; gstPaise: number; totalPaise: number; deliveryFeePaise?: number; baseFeePaise?: number
+function TotalsBlock({ subtotalPaise, gstPaise, totalPaise, deliveryFeePaise = 0, baseFeePaise = 0, pointsPaise = 0, points = 0 }: {
+  subtotalPaise: number; gstPaise: number; totalPaise: number; deliveryFeePaise?: number; baseFeePaise?: number; pointsPaise?: number; points?: number
 }) {
   return (
     <dl className="mt-3 space-y-1.5 border-t border-dashed border-fk-line pt-3 text-sm">
@@ -1307,6 +1325,9 @@ function TotalsBlock({ subtotalPaise, gstPaise, totalPaise, deliveryFeePaise = 0
             ? <><s className="mr-1.5 text-fk-muted">{formatPrice(baseFeePaise)}</s><span className="font-bold text-green-600">FREE</span></>
             : formatPrice(deliveryFeePaise)}</dd>
         </div>
+      )}
+      {pointsPaise > 0 && (
+        <div className="flex justify-between font-semibold text-amber-700"><dt>Reward points ({points})</dt><dd>−{formatPrice(pointsPaise)}</dd></div>
       )}
       <div className="flex justify-between pt-1 text-base font-extrabold"><dt>Total</dt><dd className="text-fk-red">{formatPrice(totalPaise)}</dd></div>
     </dl>

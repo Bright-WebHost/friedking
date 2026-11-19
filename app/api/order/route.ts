@@ -3,6 +3,8 @@ import { verificationEnabled } from '@/lib/verify'
 import { deliveryFeeFor, loadDeliveryRules } from '@/lib/delivery'
 import { findTable, openSession } from '@/lib/tables'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getCustomerPhone } from '@/lib/customer/session'
+import { loyaltyOffer } from '@/lib/loyalty'
 import { calcTotals, normalizePhone } from '@/lib/utils'
 import type { PlaceOrderPayload, PlacedOrder } from '@/lib/types'
 
@@ -143,7 +145,22 @@ export async function POST(req: NextRequest) {
       if (totals.subtotalPaise < rules.minOrderPaise) return bad(`Minimum order for delivery is ₹${rules.minOrderPaise / 100}.`)
       deliveryFeePaise = deliveryFeeFor(rules, totals.subtotalPaise)
     }
-    const grandTotalPaise = Math.round((totals.totalPaise + deliveryFeePaise) / 100) * 100
+
+    // Reward points (takeaway / delivery only). Only for a number proven by the WhatsApp link, the OTP or the
+    // login cookie, so nobody can spend someone else's points by typing their number. The server decides how many.
+    let loyaltyPoints = 0
+    let loyaltyPaise = 0
+    if (body.redeemPoints === true && !isDineIn && phone) {
+      const sessionPhone = await getCustomerPhone()
+      const proven = !!link || !!verificationId || (!!sessionPhone && sessionPhone === phone)
+      if (proven) {
+        const offer = await loyaltyOffer(supabase, branch.id, phone, totals.totalPaise)
+        loyaltyPoints = offer.usablePoints
+        loyaltyPaise = offer.usableValuePaise
+      }
+    }
+    const fullTotalPaise = Math.round((totals.totalPaise + deliveryFeePaise) / 100) * 100
+    let grandTotalPaise = Math.round((totals.totalPaise - loyaltyPaise + deliveryFeePaise) / 100) * 100
 
     // Dine-in: attach to the open tab of the table (or open it). No OTP: the customer is sitting at the table.
     let sessionId: string | null = null
@@ -201,6 +218,7 @@ export async function POST(req: NextRequest) {
         delivery_pincode: orderType === 'delivery' ? pincode : null,
         ...(deliveryFeePaise > 0 ? { delivery_fee_paise: deliveryFeePaise } : {}),
         ...(isDineIn ? { table_session_id: sessionId, table_number: tableNumber } : {}),
+        ...(loyaltyPoints > 0 ? { loyalty_points_redeemed: loyaltyPoints, loyalty_discount_paise: loyaltyPaise } : {}),
         special_instructions: notes || null,
         idempotency_key: idempotencyKey,
       })
@@ -223,6 +241,20 @@ export async function POST(req: NextRequest) {
       // No transaction over REST: remove the empty order so the kitchen never sees it.
       await supabase.from('orders').delete().eq('id', order.id)
       throw new Error(linesErr.message)
+    }
+
+    if (loyaltyPoints > 0) {
+      const { data: r, error: redeemErr } = await supabase.rpc('fk_loyalty_redeem', {
+        p_customer_id: customer.id, p_points: loyaltyPoints, p_order_id: order.id, p_note: `Website order #${order.order_number}`, p_staff: 'Website',
+      })
+      if (redeemErr || !r?.ok) {
+        // Points could not be taken (spent elsewhere a moment ago, daily limit): charge the normal price.
+        console.error('[POST /api/order] loyalty redeem:', redeemErr?.message ?? r?.reason)
+        await supabase.from('orders').update({ loyalty_points_redeemed: 0, loyalty_discount_paise: 0, total_paise: fullTotalPaise }).eq('id', order.id)
+        loyaltyPoints = 0
+        loyaltyPaise = 0
+        grandTotalPaise = fullTotalPaise
+      }
     }
 
     // Outbox row: n8n picks this up and sends the WhatsApp confirmation.
@@ -252,6 +284,9 @@ export async function POST(req: NextRequest) {
         deliveryPincode: orderType === 'delivery' ? pincode : null,
         deliveryFeePaise,
         tableNumber: isDineIn ? tableNumber : null,
+        // Added 2026-11-19 (additive): reward points used on this order. totalPaise is after the points discount.
+        loyaltyPointsRedeemed: loyaltyPoints,
+        loyaltyDiscountPaise: loyaltyPaise,
         specialInstructions: notes || null,
         items: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPricePaise: l.pricePaise })),
         ...totals,
@@ -263,7 +298,7 @@ export async function POST(req: NextRequest) {
 
     if (verificationId) await supabase.from('wa_verifications').update({ consumed_at: new Date().toISOString() }).eq('id', verificationId)
 
-    const placed: PlacedOrder = { orderId: order.id, orderNumber: order.order_number, totalPaise: grandTotalPaise }
+    const placed: PlacedOrder = { orderId: order.id, orderNumber: order.order_number, totalPaise: grandTotalPaise, pointsRedeemed: loyaltyPoints }
     return NextResponse.json(placed, { status: 201 })
   } catch (e) {
     console.error('[POST /api/order]', e instanceof Error ? e.message : e)

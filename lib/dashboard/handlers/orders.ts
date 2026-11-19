@@ -1,6 +1,7 @@
 import { calcTotals } from '@/lib/utils'
 import { isBoss } from '@/lib/dashboard/access'
 import { settleTable } from '@/lib/dashboard/tableSessions'
+import { refundLoyalty } from '@/lib/loyalty'
 import { audit, check, emitOrderEvent, getSettings, HttpError, id, int, optStr, str, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
@@ -25,6 +26,7 @@ interface OrderRow {
   subtotal_paise: number
   discount_paise: number
   loyalty_discount_paise: number
+  loyalty_points_redeemed: number
   cash_collected: boolean
   rider_id: string | null
   customer_id: string
@@ -33,7 +35,7 @@ interface OrderRow {
 
 export async function getOrder(ctx: Ctx, orderId: string): Promise<OrderRow> {
   const row = check(await ctx.admin.from('orders')
-    .select('id, order_number, status, order_type, accepted_at, total_paise, subtotal_paise, discount_paise, loyalty_discount_paise, cash_collected, rider_id, customer_id, table_session_id')
+    .select('id, order_number, status, order_type, accepted_at, total_paise, subtotal_paise, discount_paise, loyalty_discount_paise, loyalty_points_redeemed, cash_collected, rider_id, customer_id, table_session_id')
     .eq('id', id(orderId, 'order')).eq('branch_id', ctx.branch.id).maybeSingle(), 'load the order')
   if (!row) throw new HttpError(404, 'Order not found')
   return row as OrderRow
@@ -112,6 +114,17 @@ export async function moveOrder(ctx: Ctx, order: OrderRow, to: Status, opts: {
   if (before !== after) {
     const { error } = await ctx.admin.rpc('fk_order_stock', { p_order_id: order.id, p_sign: after ? -1 : 1, p_staff: ctx.staff.name })
     if (error) console.error('[dashboard] stock for order', order.order_number, error.message)
+  }
+  // Reward points used on the order go back to the customer when it is cancelled, and are taken again on undo.
+  if (to === 'cancelled' && from !== 'cancelled' && order.loyalty_points_redeemed > 0) {
+    await refundLoyalty(ctx.admin, order, ctx.staff.name)
+  }
+  if (from === 'cancelled' && to !== 'cancelled' && order.loyalty_points_redeemed > 0) {
+    const { data: r } = await ctx.admin.rpc('fk_loyalty_redeem', { p_customer_id: order.customer_id, p_points: order.loyalty_points_redeemed, p_order_id: order.id, p_note: `Order #${order.order_number} restored`, p_staff: ctx.staff.name })
+    if (!r?.ok) {
+      // The points were spent meanwhile: the order is charged in full.
+      await ctx.admin.from('orders').update({ loyalty_points_redeemed: 0, loyalty_discount_paise: 0, total_paise: Math.round((order.total_paise + order.loyalty_discount_paise) / 100) * 100 }).eq('id', order.id)
+    }
   }
   if (to === 'delivered' && from !== 'delivered') {
     const { error } = await ctx.admin.rpc('fk_loyalty_earn', { p_order_id: order.id })

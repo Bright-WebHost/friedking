@@ -60,10 +60,14 @@ export interface PlaceOrderPayload {
   specialInstructions: string | null
   idempotencyKey: string
   items: Array<{ itemId: string; quantity: number; note?: string }>
+  /** Use reward points on this order. The server decides how many (balance and the program's cap). */
+  redeemPoints?: boolean
 }
 
 export interface PlacedOrder {
   orderId: string
   orderNumber: number
   totalPaise: number
+  /** Reward points used, when any. */
+  pointsRedeemed?: number
 }

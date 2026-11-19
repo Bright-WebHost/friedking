@@ -26,15 +26,14 @@ code=replace(code,'var out = [];',String.raw`function phone(raw) {
 var out = [];`);
 const start=code.indexOf("    m.kind = 'rider';");const end=code.indexOf("  } else if (etype === 'customer_rider_assigned')",start);assert.ok(start>0&&end>start);
 code=code.slice(0,start)+String.raw`    m.kind = 'rider'; m.mode = 'template'; m.template = 'friedking_rider_msg';
-    var itemList = (Array.isArray(o.items_json) ? o.items_json : []).map(function (i) { return i.quantity + ' x ' + i.name; }).join('\n');
+    var itemList = (Array.isArray(o.items_json) ? o.items_json : []).map(function (i) { return i.quantity + ' x ' + clean(i.name); }).join(', ');
     var addr = clean(o.address || '');
     if (o.pincode && addr.indexOf(String(o.pincode)) === -1) { addr += ' - ' + clean(o.pincode); }
     var amount = Number(e.amount || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-    var total = Number(o.total == null ? e.amount || 0 : o.total).toLocaleString('en-IN', { maximumFractionDigits: 2 });
     var customerPhone = phone(e.customer_phone || o.customer_phone);
     m.payment_payload = 'fk_paid:' + e.order_id;
-    var heading = '*Fried King delivery*\n*Order:* ' + num + '\n\n*Customer:* ' + clean(e.customer_name || 'Guest') + '\n*Phone:* ' + customerPhone + '\n*Address:* ' + addr + '\n\n*Items:*\n';
-    var ending = '\n\n*Order total: Rs ' + total + '*\n*Cash to collect: Rs ' + amount + '*\nTap Payment collected after collecting the cash.';
+    var heading = '*New delivery ' + num + '*.\n\nCustomer: *' + clean(e.customer_name || 'Guest') + ',*\nPhone ' + customerPhone + '.\n\nAddress: ' + addr + '.\n\nItems: ';
+    var ending = '.\n\n*Collect cash: Rs ' + amount + '.*\n\nTap the button below after you collect the payment.';
     var room = Math.max(0, 1024 - heading.length - ending.length);
     if (itemList.length > room) itemList = itemList.slice(0, Math.max(0, room - 3)) + '...';
     m.text = heading + itemList + ending;

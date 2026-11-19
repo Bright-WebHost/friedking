@@ -199,10 +199,11 @@ export default function POS() {
           {count > 0 && <button onClick={clear}>Clear</button>}
         </div>
         <div style={{ padding: '14px 16px 16px', borderBottom: '1px solid var(--line)' }}>
-          <div className="seg3">
+          {/* Phones hide Dine-in (tables are run from the Tables page); it stays when a table round was started there. */}
+          <div className={`seg3 ${type === 'dine-in' ? '' : 'nodine-phone'}`}>
             <button aria-pressed={type === 'pickup'} onClick={() => setType('pickup')}><span>🏪</span>Takeaway</button>
             <button aria-pressed={type === 'delivery'} onClick={() => setType('delivery')}><span>🛵</span>Delivery</button>
-            <button aria-pressed={type === 'dine-in'} onClick={() => setType('dine-in')}><span>🍽️</span>Dine-in</button>
+            <button className="dinebtn" aria-pressed={type === 'dine-in'} onClick={() => setType('dine-in')}><span>🍽️</span>Dine-in</button>
           </div>
           {openTab && <div className="tabbanner"><b>Table {openTab.t?.table_number} · Round {openTab.round}</b>
             <span>Already on tab: {rs(openTab.already)}{count ? ` + this round ${rs(finalTotal)} = new total ${rs(openTab.already + finalTotal)}` : ''}</span></div>}

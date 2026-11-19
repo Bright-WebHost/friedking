@@ -33,13 +33,17 @@ export default function Loyalty() {
   const lifetime = data.accounts.reduce((s, a) => s + a.lifetime_points, 0)
   const earned = data.transactions.filter((t) => t.type === 'earn').reduce((s, t) => s + t.points, 0)
   const redeemed = data.transactions.filter((t) => t.type === 'redeem')
-  const redeemedPts = redeemed.reduce((s, t) => s + Math.abs(t.points), 0)
+  // Points given back for cancelled orders do not count as redeemed.
+  const refundedPts = data.transactions.filter((t) => t.type === 'refund').reduce((s, t) => s + t.points, 0)
+  const redeemedPts = Math.max(0, redeemed.reduce((s, t) => s + Math.abs(t.points), 0) - refundedPts)
   const active30 = new Set(data.transactions.filter((t) => Date.now() - new Date(t.created_at).getTime() <= 30 * 86400000).map((t) => t.account_id)).size
   const byMonth = new Map<string, { earned: number; redeemed: number }>()
   for (const t of data.transactions) {
-    if (t.type !== 'earn' && t.type !== 'redeem') continue
+    if (t.type !== 'earn' && t.type !== 'redeem' && t.type !== 'refund') continue
     const m = t.created_at.slice(0, 7), row = byMonth.get(m) ?? { earned: 0, redeemed: 0 }
-    if (t.type === 'earn') row.earned += t.points; else row.redeemed += Math.abs(t.points)
+    if (t.type === 'earn') row.earned += t.points
+    else if (t.type === 'refund') row.redeemed = Math.max(0, row.redeemed - t.points)
+    else row.redeemed += Math.abs(t.points)
     byMonth.set(m, row)
   }
   const months = [...byMonth.keys()].sort().slice(-6)

@@ -29,3 +29,5 @@ content-drafts/*.docx
 content-drafts/media/
 **/Claude outputs/
 *.mp4
+n8n-backups/
+scratch/

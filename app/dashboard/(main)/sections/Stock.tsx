@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { DIngredient, DMenuItem, DMovement } from '@/lib/dashboard/types'
-import { downloadCsv, ist, Loading, Modal, pct, RangeChips, rangeBounds, rs, useDash, useLoad, type Range } from '../kit'
+import { downloadCsv, ist, Loading, Modal, pct, RangeChips, rangeBounds, rs, useDash, useIsMobile, useLoad, type Range } from '../kit'
 import { ItemModal, MenuCard, type MenuData } from './Menu'
 import { fmtQty, maxMakeable, refDish, refIng, StockRow, useStockActions, type StockRef } from './stockParts'
 
@@ -17,14 +17,17 @@ export default function Stock() {
   const [tab, setTab] = useState<Tab>('dishes')
   const [q, setQ] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
-  const [view, setView] = useState<'cards' | 'list'>(getView)
+  const [viewPref, setView] = useState<'cards' | 'list'>(getView)
+  // Phones always get cards: wide tables are hard to use on a small screen.
+  const mobile = useIsMobile()
+  const view = mobile ? 'cards' : viewPref
   const [modal, setModal] = useState<React.ReactNode>(null)
   const stock = useStockActions(reload, data?.suppliers ?? [], data ? { recipes: data.recipes, items: data.items } : undefined)
   if (!data) return <Loading error={error} onRetry={reload} />
 
   const defLow = Number(settings.low_stock_threshold) || 5
   const close = () => setModal(null)
-  const toggleView = () => { const v = view === 'cards' ? 'list' : 'cards'; setView(v); try { localStorage.setItem(viewKey, v) } catch { /* ignore */ } }
+  const toggleView = () => { const v = viewPref === 'cards' ? 'list' : 'cards'; setView(v); try { localStorage.setItem(viewKey, v) } catch { /* ignore */ } }
   const editDish = (m: DMenuItem | null, opts: { recipe?: boolean; track?: boolean } = {}) => setModal(<ItemModal item={m} data={data} opts={opts} onClose={close} onSaved={() => { close(); void reload() }} />)
   const refs: StockRef[] = [
     ...data.items.filter((m) => m.track_stock).map((m) => refDish(m, defLow)),
@@ -38,8 +41,8 @@ export default function Stock() {
     </div>
   )
   const headBtns = (extra?: React.ReactNode) => (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <button className="btn sm ghost" onClick={toggleView}>{view === 'cards' ? '☰ List view' : '▦ Card view'}</button>
+    <div className="headbtns">
+      {!mobile && <button className="btn sm ghost" onClick={toggleView}>{view === 'cards' ? '☰ List view' : '▦ Card view'}</button>}
       {extra}
       <button className="btn sm ghost" onClick={() => refs.length ? setModal(<StockTake refs={refs} onClose={close} onDone={() => { close(); void reload() }} />) : toast('No tracked items to count')}>📋 Start Stock Take</button>
     </div>
