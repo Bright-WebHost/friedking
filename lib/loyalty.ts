@@ -23,16 +23,27 @@ const NONE: LoyaltyOffer = { available: false, balance: 0, usablePoints: 0, usab
  */
 export async function loyaltyOffer(db: SupabaseClient, branchId: string, phone: string, foodTotalPaise: number): Promise<LoyaltyOffer & { customerId: string | null }> {
   const [{ data: program }, { data: customer }] = await Promise.all([
-    db.from('loyalty_programs').select('name, currency_name, type, redemption_paise_per_point, max_redeem_pct_per_order')
+    db.from('loyalty_programs').select('name, currency_name, type, redemption_paise_per_point, max_redeem_pct_per_order, max_redeem_paise_per_day')
       .eq('branch_id', branchId).eq('is_active', true).maybeSingle(),
     db.from('customers').select('id').eq('branch_id', branchId).eq('phone', phone).maybeSingle(),
   ])
   if (!program || !customer || program.type === 'visit' || !(program.redemption_paise_per_point > 0)) return { ...NONE, customerId: customer?.id ?? null }
-  const { data: account } = await db.from('loyalty_accounts').select('points_balance').eq('customer_id', customer.id).maybeSingle()
+  const { data: account } = await db.from('loyalty_accounts').select('id, points_balance').eq('customer_id', customer.id).maybeSingle()
   const balance = Number(account?.points_balance ?? 0)
   const perPoint = Number(program.redemption_paise_per_point)
   const maxPct = Number(program.max_redeem_pct_per_order ?? 0)
-  const maxPaise = Math.floor(Math.max(0, foodTotalPaise) * maxPct / 100)
+  let maxPaise = Math.floor(Math.max(0, foodTotalPaise) * maxPct / 100)
+  if (program.max_redeem_paise_per_day != null && account?.id) {
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const { data: todayTxns } = await db.from('loyalty_transactions')
+      .select('points')
+      .eq('account_id', account.id)
+      .eq('type', 'redeem')
+      .gte('created_at', todayStart.toISOString())
+    const todayUsedPaise = (todayTxns ?? []).reduce((sum, t) => sum + Math.abs(t.points) * perPoint, 0)
+    maxPaise = Math.min(maxPaise, Math.max(0, program.max_redeem_paise_per_day - todayUsedPaise))
+  }
   // Whole rupees only (bills have no paise), so round the usable value down to a rupee.
   let usablePoints = Math.min(balance, Math.floor(maxPaise / perPoint))
   while (usablePoints > 0 && (usablePoints * perPoint) % 100 !== 0) usablePoints -= 1
@@ -66,6 +77,9 @@ export async function verifiedPhone(db: SupabaseClient, opts: { linkToken?: stri
 export async function refundLoyalty(db: SupabaseClient, order: { id: string; order_number: number; customer_id: string; loyalty_points_redeemed?: number | null }, staff: string) {
   const points = Number(order.loyalty_points_redeemed ?? 0)
   if (points <= 0) return
+  // Atomic version from friedking_whatsapp_loyalty.sql; the code below is the fallback until that file is run.
+  const { error: rpcError } = await db.rpc('fk_loyalty_refund', { p_order: order.id, p_staff: staff })
+  if (!rpcError) return
   const { data: account } = await db.from('loyalty_accounts').select('id, points_balance').eq('customer_id', order.customer_id).maybeSingle()
   if (!account) return
   const { data: moves } = await db.from('loyalty_transactions').select('points, type').eq('order_id', order.id).in('type', ['redeem', 'refund'])
