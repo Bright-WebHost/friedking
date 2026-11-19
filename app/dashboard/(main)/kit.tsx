@@ -71,9 +71,9 @@ export type { DMeta }
 
 // ---------------------------------------------------------------- formatting
 
-const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 })
-/** 12345 paise -> "₹123.45", 12300 -> "₹123" */
-export const rs = (paise: number | null | undefined) => `₹${INR.format(Math.round(Number(paise || 0)) / 100)}`
+const INR = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 })
+/** Always whole rupees, no paisa (e.g. "₹423", "₹240") */
+export const rs = (paise: number | null | undefined) => `₹${INR.format(Math.round(Number(paise || 0) / 100))}`
 export const pct = (n: number) => `${n >= 0 ? '' : '−'}${Math.abs(n || 0).toFixed(1)}%`
 const istFmt = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 export const ist = (t: string | number | Date | null | undefined) => (t ? istFmt.format(new Date(t)) : '—')

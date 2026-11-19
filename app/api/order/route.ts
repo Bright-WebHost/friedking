@@ -143,7 +143,7 @@ export async function POST(req: NextRequest) {
       if (totals.subtotalPaise < rules.minOrderPaise) return bad(`Minimum order for delivery is ₹${rules.minOrderPaise / 100}.`)
       deliveryFeePaise = deliveryFeeFor(rules, totals.subtotalPaise)
     }
-    const grandTotalPaise = totals.totalPaise + deliveryFeePaise
+    const grandTotalPaise = Math.round((totals.totalPaise + deliveryFeePaise) / 100) * 100
 
     // Dine-in: attach to the open tab of the table (or open it). No OTP: the customer is sitting at the table.
     let sessionId: string | null = null

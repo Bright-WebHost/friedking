@@ -25,7 +25,7 @@ export async function settleTable(ctx: Ctx, sessionId: string, options: {
     throw new HttpError(409, 'This table has a new or preparing round. Mark all rounds ready before Done, or use Close & pay to close the table explicitly.')
   }
 
-  const total = rounds.reduce((sum, order) => sum + order.total_paise, 0)
+  const total = Math.round(rounds.reduce((sum, order) => sum + order.total_paise, 0) / 100) * 100
   const amount = options.amountPaise != null && options.amountPaise !== '' ? int(options.amountPaise, 'amount', 0) : total
   const customer = rounds[0]?.customer
   const firstCustomer = Array.isArray(customer) ? customer[0] : customer

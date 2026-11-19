@@ -2,17 +2,18 @@ import type { OrderTotals } from '@/lib/types'
 
 export const GST_RATE = 0.05
 
-/** 7900 -> "₹79", 7950 -> "₹79.50" */
+/** 7900 -> "₹79", 7950 -> "₹80" (always whole rupees, no paisa) */
 export function formatPrice(paise: number): string {
-  const rupees = paise / 100
-  return `₹${Number.isInteger(rupees) ? rupees : rupees.toFixed(2)}`
+  const rupees = Math.round(paise / 100)
+  return `₹${rupees.toLocaleString('en-IN')}`
 }
 
-/** Order totals where menu prices are before 5% GST. Used by browser and server. */
+/** Order totals where menu prices are before 5% GST. Final total is rounded to nearest whole rupee (no paisa). */
 export function calcTotals(lines: Array<{ pricePaise: number; quantity: number }>): OrderTotals {
   const subtotalPaise = lines.reduce((sum, l) => sum + l.pricePaise * l.quantity, 0)
   const gstPaise = Math.round(subtotalPaise * GST_RATE)
-  return { subtotalPaise, gstPaise, totalPaise: subtotalPaise + gstPaise }
+  const totalPaise = Math.round((subtotalPaise + gstPaise) / 100) * 100
+  return { subtotalPaise, gstPaise, totalPaise }
 }
 
 /**

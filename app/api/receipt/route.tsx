@@ -87,12 +87,18 @@ export async function GET(request: NextRequest) {
     const typeLabel = order.order_type === 'pickup' ? 'TAKEAWAY' : String(order.order_type).toUpperCase()
     const payLabel = order.cash_collected ? 'PAID' : order.order_type === 'delivery' ? 'CASH ON DELIVERY' : 'PAY AT COUNTER'
 
+    const roundedTotalPaise = Math.round(order.total_paise / 100) * 100
     const summary: Array<[string, string]> = [['Item total', rs(order.subtotal_paise)]]
     if (order.discount_paise > 0) summary.push(['Discount', `-${rs(order.discount_paise)}`])
     if (order.loyalty_discount_paise > 0) summary.push(['Reward points', `-${rs(order.loyalty_discount_paise)}`])
     summary.push(['GST (CGST + SGST)', rs(order.gst_paise)])
-    const fee = order.total_paise - (order.subtotal_paise - order.discount_paise - order.loyalty_discount_paise + order.gst_paise)
-    if (order.order_type === 'delivery' && fee > 0) summary.push(['Delivery fee', rs(fee)])
+    const baseSum = order.subtotal_paise - (order.discount_paise || 0) - (order.loyalty_discount_paise || 0) + order.gst_paise
+    const fee = order.order_type === 'delivery' ? Math.max(0, order.total_paise - baseSum) : 0
+    if (fee > 0) summary.push(['Delivery fee', rs(fee)])
+    const roundOff = roundedTotalPaise - (baseSum + fee)
+    if (roundOff !== 0) {
+      summary.push(['Round off', `${roundOff > 0 ? '+' : ''}${rs(roundOff)}`])
+    }
 
     const COLS = 40, SQ = W / COLS
     const checker = (flip: boolean) => (
@@ -230,7 +236,7 @@ export async function GET(request: NextRequest) {
             {/* TOTAL Card */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: RED, borderRadius: 24, padding: '24px 36px' }}>
               <span style={{ fontSize: 34, color: '#ffffff', letterSpacing: 5, fontWeight: 700 }}>TOTAL</span>
-              <span style={{ fontSize: 66, fontWeight: 700, color: '#ffffff' }}>{rs(order.total_paise)}</span>
+              <span style={{ fontSize: 66, fontWeight: 700, color: '#ffffff' }}>{`₹${Math.round(order.total_paise / 100).toLocaleString('en-IN')}`}</span>
             </div>
           </div>
 

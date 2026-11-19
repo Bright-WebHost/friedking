@@ -93,7 +93,7 @@ begin
     'items_json', coalesce((select jsonb_agg(jsonb_build_object('name', i.name_snapshot, 'quantity', i.quantity,
                                    'price', i.unit_price_paise / 100.0) order by i.line_no, i.name_snapshot)
                             from order_items i where i.order_id = o.id), '[]'::jsonb),
-    'total', o.total_paise / 100.0,
+    'total', round(o.total_paise / 100.0)::int,
     'created_at', o.created_at,
     'customer_name', c.name,
     'customer_phone', ltrim(c.phone, '+'),
@@ -101,7 +101,7 @@ begin
     'pincode', o.delivery_pincode,
     'landmark', '',
     'amendment_count', o.amendment_count,
-    'cash_amount', o.total_paise / 100.0)
+    'cash_amount', round(o.total_paise / 100.0)::int)
   into r
   from orders o join customers c on c.id = o.customer_id
   where o.id = p_order_id;
@@ -295,7 +295,7 @@ begin
   end loop;
   if n = 0 then raise exception 'empty order'; end if;
   update orders set subtotal_paise = sub, gst_paise = round(sub * 0.05)::int,
-         total_paise = sub + round(sub * 0.05)::int
+         total_paise = round((sub + round(sub * 0.05)::int) / 100.0)::int * 100
    where id = p_order;
 end $$;
 

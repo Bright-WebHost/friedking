@@ -153,7 +153,7 @@ export const posHandler: Handler = {
       }
 
       const now = new Date().toISOString()
-      const total = Math.max(0, totals.totalPaise - discountPaise - loyaltyDiscountPaise)
+      const total = Math.max(0, Math.round((totals.totalPaise - discountPaise - loyaltyDiscountPaise) / 100) * 100)
       const order = check(await ctx.admin.from('orders').insert({
         branch_id: ctx.branch.id, customer_id: customerId, status: 'preparing', source: 'pos',
         subtotal_paise: totals.subtotalPaise, gst_paise: totals.gstPaise, total_paise: total,

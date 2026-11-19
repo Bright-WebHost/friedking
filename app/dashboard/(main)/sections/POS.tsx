@@ -68,7 +68,7 @@ export default function POS() {
     : 0
   const pts = redeemOn ? Math.min(redeemPts, maxPts) : 0
   const loyaltyPaise = program ? pts * program.redemption_paise_per_point : 0
-  const finalTotal = Math.max(0, totals.totalPaise - discountPaise - loyaltyPaise)
+  const finalTotal = Math.max(0, Math.round((totals.totalPaise - discountPaise - loyaltyPaise) / 100) * 100)
 
   if (!data) return <Loading error={error} onRetry={reload} />
 

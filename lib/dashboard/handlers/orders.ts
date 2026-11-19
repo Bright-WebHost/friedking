@@ -302,7 +302,7 @@ export const ordersHandler: Handler = {
       check(await ctx.admin.from('order_items').insert(lines.map((l) => ({ ...l, order_id: order.id, line_total_paise: l.unit_price_paise * l.quantity }))), 'save order items')
 
       const totals = calcTotals(lines.map((l) => ({ pricePaise: l.unit_price_paise, quantity: l.quantity })))
-      const total = Math.max(0, totals.totalPaise - (order.discount_paise ?? 0) - (order.loyalty_discount_paise ?? 0))
+      const total = Math.max(0, Math.round((totals.totalPaise - (order.discount_paise ?? 0) - (order.loyalty_discount_paise ?? 0)) / 100) * 100)
       const { data: cur } = await ctx.admin.from('orders').select('amendment_count').eq('id', order.id).single()
       check(await ctx.admin.from('orders').update({
         subtotal_paise: totals.subtotalPaise, gst_paise: totals.gstPaise, total_paise: total,
