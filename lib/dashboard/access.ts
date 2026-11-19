@@ -5,9 +5,10 @@ export type SectionKey =
   | 'pos' | 'orders' | 'tables' | 'chat' | 'menu' | 'stock' | 'pnl' | 'riders'
   | 'analytics' | 'ai' | 'contacts' | 'loyalty' | 'blast' | 'settings'
 
-export const SECTIONS: Array<{ key: SectionKey; label: string; icon: string; roles: StaffRole[] }> = [
+export const SECTIONS: Array<{ key: SectionKey; label: string; icon: string; roles: StaffRole[]; mobileOnly?: boolean }> = [
   { key: 'pos', label: 'POS', icon: '🛒', roles: ['owner', 'manager', 'staff'] },
   { key: 'orders', label: 'Tables & Orders', icon: '🧾', roles: ['owner', 'manager', 'staff'] },
+  { key: 'tables', label: 'Tables', icon: '🍽️', roles: ['owner', 'manager', 'staff'], mobileOnly: true },
   { key: 'chat', label: 'Live Chat', icon: '💬', roles: ['owner', 'manager'] },
   { key: 'menu', label: 'Menu', icon: '📋', roles: ['owner', 'manager'] },
   { key: 'stock', label: 'Stock', icon: '📦', roles: ['owner', 'manager'] },

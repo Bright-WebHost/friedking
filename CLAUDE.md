@@ -53,7 +53,7 @@ lib/dashboard/handlers/*.ts             Server logic per domain (service role, b
 lib/dashboard/access.ts                 Sections and which roles see them (owner / manager / staff)
 ```
 
-Old dashboard files that are no longer used and can be deleted: `app/dashboard/(main)/Dashboard{Client,Contacts,POS,Phase2,Placeholder,Reports,Settings}.tsx` and `app/api/dashboard/{orders,menu,pos,tables,stock,loyalty,broadcasts,contacts,analytics,settings,promotions}/`. Keep `app/api/dashboard/me`.
+Old dashboard files were deleted on 2026-11-19 (the `Dashboard*.tsx` pages and the per-domain `app/api/dashboard/*` routes); only `me` and `[branch]/[domain]` remain. Phones get a separate Tables page (`sections/TablesPage.tsx`, mobile-only nav entry `tables`, two cards per row); desktop keeps the table rail. Previously listed as deletable: `app/dashboard/(main)/Dashboard{Client,Contacts,POS,Phase2,Placeholder,Reports,Settings}.tsx` and `app/api/dashboard/{orders,menu,pos,tables,stock,loyalty,broadcasts,contacts,analytics,settings,promotions}/`. Keep `app/api/dashboard/me`.
 
 ## Database (Supabase / Postgres)
 

@@ -241,7 +241,7 @@ function MobileOrders({
   openTable: (o: BoardOrder) => void
   floor: ReturnType<typeof useFloor>
 }) {
-  const { api, toast, riders } = useDash()
+  const { api, toast, riders, go } = useDash()
   const [filterOpen, setFilterOpen] = useState(false)
   const live = orders.filter((o) => o.status !== 'cancelled')
   const groups: Record<string, BoardOrder[]> = {
@@ -354,11 +354,13 @@ function MobileOrders({
         ))}
       </div>
 
-      {/* Tables rail for floor staff */}
+      {/* Tables live on their own page on phones */}
       {floor.data && floor.data.tables.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <TableRail floor={floor} mobile />
-        </div>
+        <button type="button" className="tbllink" onClick={() => go('tables')}>
+          <span>🍽️ Tables</span>
+          <small>{floor.data.sessions.length} of {floor.data.tables.length} occupied</small>
+          <span aria-hidden>›</span>
+        </button>
       )}
 
       {/* List of cards */}

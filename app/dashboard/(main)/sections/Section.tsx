@@ -1,7 +1,8 @@
 'use client'
 
 import { canSee } from '@/lib/dashboard/access'
-import { useDash } from '../kit'
+import { useDash, useIsMobile } from '../kit'
+import TablesPage from './TablesPage'
 import Orders from './Orders'
 import POS from './POS'
 import Chat from './Chat'
@@ -24,9 +25,10 @@ const PAGES: Record<string, () => React.ReactNode> = {
 
 export default function Section({ section: requested }: { section: string }) {
   const { staff } = useDash()
-  // Tables are part of Floor & Orders now; old /tables links land there.
-  const section = requested === 'tables' ? 'orders' : requested
-  const Page = PAGES[section]
+  const mobile = useIsMobile()
+  // Phones get their own Tables page; on desktop the tables are the rail inside Floor & Orders.
+  const section = requested === 'tables' && !mobile ? 'orders' : requested
+  const Page = section === 'tables' ? TablesPage : PAGES[section]
   if (!Page) return <div className="none">This page does not exist.</div>
   if (!canSee(staff.role, section)) return <div className="none">Your role ({staff.role}) cannot open this page. Ask the owner if you need it.</div>
   return <Page />

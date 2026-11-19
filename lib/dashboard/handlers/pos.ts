@@ -166,10 +166,16 @@ export const posHandler: Handler = {
         idempotency_key: `pos-${crypto.randomUUID()}`,
       }).select('id, order_number').single(), 'create the order')
 
-      check(await ctx.admin.from('order_items').insert(lines.map((l) => ({
+      const itemsRes = await ctx.admin.from('order_items').insert(lines.map((l) => ({
         order_id: order.id, menu_item_id: l.id, name_snapshot: l.name, unit_price_paise: l.pricePaise,
         quantity: l.quantity, line_total_paise: l.pricePaise * l.quantity, notes: notes.get(l.id) ?? null,
-      }))), 'save the order items')
+      })))
+      if (itemsRes.error) {
+        // Never leave an empty "preparing" order on the kitchen board.
+        console.error('[dashboard] POS order items:', itemsRes.error.message)
+        await ctx.admin.from('orders').delete().eq('id', order.id)
+        throw new HttpError(500, 'Could not save the order items. Nothing was placed, please try again.')
+      }
 
       if (redeemPoints) {
         const { data: r } = await ctx.admin.rpc('fk_loyalty_redeem', { p_customer_id: customerId, p_points: redeemPoints, p_order_id: order.id, p_note: `POS order #${order.order_number}`, p_staff: ctx.staff.name })
@@ -204,7 +210,8 @@ export const posHandler: Handler = {
           status: 'preparing',
           previousStatus: 'pending',
           orderType: type,
-          customerNotification: { kind: 'accepted', receipt: true },
+          // Later rounds of a table tab get the "round added" message above instead of a second receipt.
+          customerNotification: { kind: 'accepted', receipt: !(sessionId && tableHasPreviousRounds), windowOnly: true },
         })
       }
       await audit(ctx, { orderId: order.id, orderNumber: order.order_number, action: 'pos_order', to: 'preparing', detail: `${type}${tableNumber ? ` · table ${tableNumber}` : ''} · by ${ctx.staff.name}` })

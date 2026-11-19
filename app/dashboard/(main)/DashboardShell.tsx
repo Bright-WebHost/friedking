@@ -172,7 +172,7 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
           <div className="checker" />
           <nav aria-label="Dashboard">
             {nav.map((s) => (
-              <Link key={s.key} href={slug ? `/dashboard/${slug}/${s.key}` : '/dashboard'} aria-current={active?.key === s.key ? 'page' : undefined} onClick={() => setNavOpen(false)}>
+              <Link key={s.key} className={s.mobileOnly ? 'mobnav' : undefined} href={slug ? `/dashboard/${slug}/${s.key}` : '/dashboard'} aria-current={active?.key === s.key ? 'page' : undefined} onClick={() => setNavOpen(false)}>
                 <span aria-hidden style={{ width: 20, textAlign: 'center' }}>{s.icon}</span>{s.label}
               </Link>
             ))}

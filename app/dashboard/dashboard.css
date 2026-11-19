@@ -855,3 +855,71 @@
   & .aiactbtns { display: flex; gap: 8px; }
   & .aistate { font-size: 12px; font-weight: 800; color: var(--muted); } & .aistate.ok { color: var(--ok); }
 }
+
+/* ======================================================================
+   Phone layout pass: Tables page, Menu cards two per row, tidy filters.
+   ====================================================================== */
+.fkd {
+  /* "Tables" nav entry is for phones only; desktop has the table rail inside Floor & Orders */
+  & aside nav a.mobnav { display: none; }
+
+  /* link card on the phone Orders page */
+  & .tbllink { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid #cfc2f5; border-radius: 14px; background: #f5f1ff; color: #3f2a99; font-weight: 800; font-size: 14px; text-align: left; }
+  & .tbllink small { margin-left: auto; font-size: 11.5px; font-weight: 700; color: var(--muted); }
+
+  /* phone Tables page */
+  & .tblbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  & .tblchips { display: flex; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 2px; }
+  & .tblchips::-webkit-scrollbar { display: none; }
+  & .tblchips .chip { flex: none; padding: 7px 12px; font-size: 12.5px; white-space: nowrap; }
+  & .chipn { display: inline-block; min-width: 18px; margin-left: 3px; padding: 0 5px; border-radius: 999px; background: rgba(0,0,0,.08); font-size: 11px; text-align: center; }
+  & .tblstats .mstat { flex: 1 1 0; min-width: 0; }
+  & .tblgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  & .tblcard { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: #fff; text-align: left; box-shadow: var(--shadow, 0 1px 3px rgba(16,21,28,.05)); }
+  & .tblhead { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 100%; margin-bottom: 4px; }
+  & .tblno { width: 34px; height: 34px; border-radius: 10px; background: #f1efef; color: var(--ink); display: grid; place-items: center; font-weight: 800; font-size: 16px; flex: none; }
+  & .tblstate { font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; background: #f1efef; color: var(--muted); white-space: nowrap; }
+  & .tblmeta { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+  & .tblamt { font-size: 19px; font-weight: 800; letter-spacing: -.4px; }
+  & .tblguest { font-size: 12.5px; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .tblfree { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 6px; }
+  & .tblcard.busy { border-color: #cfc2f5; background: #faf8ff; } & .tblcard.busy .tblno { background: #5b3fbf; color: #fff; } & .tblcard.busy .tblstate { background: #f2eeff; color: #5b3fbf; }
+  & .tblcard.new { border-color: #f3b3b7; background: #fff5f5; } & .tblcard.new .tblno { background: var(--red); color: #fff; } & .tblcard.new .tblstate { background: #ffe1e3; color: var(--red2); }
+  & .tblcard.ready { border-color: #e89b1c; background: #fff8ec; } & .tblcard.ready .tblno { background: #e89b1c; color: #fff; } & .tblcard.ready .tblstate { background: #fff3e5; color: #9a6b00; }
+  & .tblcard.pay { border-color: #1f8a4c; background: #f0faf4; } & .tblcard.pay .tblno { background: #1f8a4c; color: #fff; } & .tblcard.pay .tblstate { background: #e6f6ec; color: #1f8a4c; }
+
+  @media (max-width: 860px) {
+    & aside nav a.mobnav { display: flex; }
+
+    /* Menu: two dish cards per row, compact so they fit a phone */
+    & .mgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    & .mhead { align-items: center; gap: 10px; }
+    & .mhead h2 { font-size: 22px; }
+    & .micard { border-radius: 13px; }
+    & .mi-body2 { padding: 9px 10px 7px; }
+    & .mi-body2 b { font-size: 12.5px; overflow-wrap: anywhere; }
+    & .mi-body2 p { font-size: 11px; -webkit-line-clamp: 2; }
+    & .mi-foot { flex-direction: column; align-items: stretch; gap: 8px; padding: 8px 10px; }
+    & .mi-foot .mi-acts { justify-content: space-between; }
+    & .mi-acts button { flex: 1; width: auto; height: 34px; }
+    & .mi-stockrow { padding: 8px 10px; font-size: 11px; }
+    & .mi-stockacts button { font-size: 10px; padding: 4px 7px; }
+    & .mi-pin { font-size: 9.5px; padding: 2px 6px; }
+
+    /* generic page furniture */
+    & .mrow { flex-wrap: wrap; }
+    & .formgrid { grid-template-columns: minmax(0, 1fr); }
+    & .head h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    & .panel { overflow-wrap: anywhere; }
+    & .panel table { display: block; max-width: 100%; }
+  }
+}
+
+/* Phone filters: one scrollable row instead of wrapping into a tall block */
+@media (max-width: 860px) {
+  .fkd .filterrow { flex-wrap: nowrap; gap: 8px; margin-bottom: 12px; }
+  .fkd .filterrow .flabel { flex: none; }
+  .fkd .filterrow .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: -2px; }
+  .fkd .filterrow .chips::-webkit-scrollbar { display: none; }
+  .fkd .filterrow .chips .chip { flex: none; padding: 7px 13px; font-size: 12.5px; min-height: 36px; white-space: nowrap; }
+}

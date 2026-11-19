@@ -96,13 +96,23 @@ export async function audit(ctx: Ctx, entry: { orderId?: string | null; orderNum
 
 /** Outbox row for n8n. order_created / order_status_changed keep their existing payload shape; extra fields are additive. */
 export async function emitOrderEvent(ctx: Ctx, orderId: string, eventType: string, payload: Record<string, unknown>) {
-  const { error } = await ctx.admin.from('order_events').insert({
+  const row = {
     order_id: orderId,
     branch_id: ctx.branch.id,
     event_type: eventType,
     payload: { orderId, branchSlug: ctx.branch.slug, ...payload },
-  })
-  if (error) console.error(`[dashboard] order event ${eventType}:`, error.message)
+  }
+  // The status is already saved when this runs, so a lost event means a customer who never hears about it.
+  // Retry a couple of times for transient network errors before giving up.
+  let lastError = ''
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { error } = await ctx.admin.from('order_events').insert(row)
+    if (!error) return true
+    lastError = error.message
+    await new Promise((r) => setTimeout(r, 150 * (attempt + 1)))
+  }
+  console.error(`[dashboard] order event ${eventType} LOST for order ${orderId}:`, lastError)
+  return false
 }
 
 // ---- input helpers ----
