@@ -191,9 +191,11 @@ export default function POS() {
         {body}
       </div>
 
+      {cartOpen && <div className="navbackdrop" style={{ zIndex: 65 }} onClick={() => setCartOpen(false)} />}
       <div className={`cartbox ${cartOpen ? 'open' : ''} ${count ? 'hasitems' : ''}`}>
         <div className="ch" onClick={(e) => { if ((e.target as HTMLElement).tagName !== 'BUTTON') setCartOpen((o) => !o) }}>
           <span>🛒 Current order{count ? ` · ${count} · ${rs(finalTotal)}` : ''}</span>
+          <span className="mobindicator">{cartOpen ? '▼ Minimize' : '▲ View order'}</span>
           {count > 0 && <button onClick={clear}>Clear</button>}
         </div>
         <div style={{ padding: '14px 16px 16px', borderBottom: '1px solid var(--line)' }}>

@@ -21,7 +21,7 @@ export default function TableOrderCard({ order, act, mobile = false, onOpen }: {
   const ready = () => update(() => api.post('tables', 'ready', { sessionId: order.table_session_id }))
   const done = async () => { await act.markDone(first); return false }
   return (
-    <div className={`${mobile ? 'mocard' : 'o'} ch-dine-in table-order-card`} data-session-id={order.table_session_id} onClick={(e) => {
+    <div className={`${mobile ? `mocard sts-${order.status === 'delivered' ? 'delivered' : order.status === 'ready' ? 'ready' : order.status === 'pending' ? 'new' : 'preparing'}` : 'o'} ch-dine-in table-order-card`} data-session-id={order.table_session_id} onClick={(e) => {
       if (!(e.target as HTMLElement).closest('button,.slide,.mini')) onOpen()
     }}>
       <div className="orow">

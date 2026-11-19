@@ -163,6 +163,7 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
       )}
       <div className="shell">
         <aside className={navOpen ? 'open' : ''}>
+          <button className="navdrawer-close" aria-label="Close menu" onClick={() => setNavOpen(false)}>✕</button>
           <div className="brandwrap">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/brand/logo-white.png" alt="Fried King" />
@@ -198,6 +199,11 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
               <span className="pilb upd" title="Last time data was fetched">⟳ Updated {updatedAt ? istTime(updatedAt) : '…'}</span>
               {meta && <span className="pilb">{meta.branch.name}</span>}
               {!soundOn && <button className="pilb warn" onClick={() => { enableSound(); chime() }}>🔕 Tap to enable sound</button>}
+            </div>
+            <div className="mobonly">
+              <button className="btn sm ghost" title={soundOn ? 'Sound on' : 'Enable sound'} onClick={() => { enableSound(); chime() }}>{soundOn ? '🔔' : '🔕'}</button>
+              <button className="btn sm ghost" title="Refresh" onClick={() => { router.refresh(); window.dispatchEvent(new Event('fk-refresh')); toast('Refreshed') }}>↻</button>
+              <button className="btn sm ghost" title="Sign out" onClick={signOut}>⏻</button>
             </div>
           </div>
           {metaError ? <div className="none">{metaError}</div>

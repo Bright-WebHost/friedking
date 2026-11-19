@@ -73,9 +73,7 @@ export default function Orders() {
   if (mobile) {
     return (
       <>
-        {stats}
-        <TableRail floor={floor} mobile />
-        <MobileOrders orders={boardOrders} act={act} revenue={revenue} range={range} setRange={setRange} openTable={openTable} />
+        <MobileOrders orders={boardOrders} act={act} revenue={revenue} range={range} setRange={setRange} openTable={openTable} floor={floor} />
         {floor.popup(act)}{floor.modal}{act.modal}
       </>
     )
@@ -183,9 +181,68 @@ export default function Orders() {
 
 type Act = ReturnType<typeof useOrderActions>
 
-/** Phone layout: pill tabs + big buttons (Oceana's mobile Orders). New orders can be accepted from the list too. */
-function MobileOrders({ orders, act, revenue, range, setRange, openTable }: { orders: BoardOrder[]; act: Act; revenue: number; range: Range; setRange: (r: Range) => void; openTable: (o: BoardOrder) => void }) {
-  const { api, toast } = useDash()
+const RANGE_LABELS: Record<Range, string> = {
+  today: 'Today',
+  yesterday: 'Yesterday',
+  week: 'Last 7 days',
+  month: 'This month',
+  all: 'All time',
+  custom: 'Custom',
+}
+
+function MobileOrderProgress({ order }: { order: BoardOrder }) {
+  const stage = order.status === 'pending' ? 0
+    : ['preparing', 'confirmed'].includes(order.status) ? 1
+      : order.status === 'ready' ? 2
+        : 3
+  const isDine = order.order_type === 'dine-in'
+  const title = stage === 0 ? 'New order'
+    : stage === 1 ? 'Being prepared'
+      : stage === 2
+        ? order.order_type === 'delivery' ? 'Out for delivery' : isDine ? 'Ready to serve' : 'Ready for pickup'
+        : isDine ? 'Served & closed' : 'Delivered / Fulfilled'
+  const detail = stage === 0 ? 'Waiting for staff to accept'
+    : stage === 1 ? 'Kitchen is preparing this order'
+      : stage === 2
+        ? order.order_type === 'delivery' ? 'Rider assigned / on the way' : isDine ? 'Ready to serve at table' : 'Waiting for customer pickup'
+        : isDine ? 'This table order has been served' : 'This order has been fulfilled'
+  const steps = ['Received', 'Preparing', 'Ready', isDine ? 'Served' : 'Done']
+
+  return (
+    <section className={`mo-progress sts-${stage === 3 ? 'delivered' : stage === 2 ? 'ready' : stage === 1 ? 'preparing' : 'new'}`} aria-label={`Order status: ${title}`}>
+      <div className="mo-progress-heading">
+        <div>
+          <span className="mo-progress-eyebrow">CURRENT STATUS · STEP ${stage + 1} OF 4</span>
+          <strong>{title}</strong>
+          <span className="mo-progress-detail">{detail}</span>
+        </div>
+      </div>
+      <ol className="mo-progress-steps">
+        {steps.map((step, index) => (
+          <li key={step} className={index < stage ? 'complete' : index === stage ? 'current' : ''} aria-current={index === stage ? 'step' : undefined}>
+            <span className="mo-progress-dot">{index < stage ? '✓' : index + 1}</span>
+            <span className="mo-progress-step-label">{step}</span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+/** Phone layout: Rasoi-style organized mobile orders board with summary, 2x2 status grid, progress tracker, and clean actions. */
+function MobileOrders({
+  orders, act, revenue, range, setRange, openTable, floor,
+}: {
+  orders: BoardOrder[]
+  act: Act
+  revenue: number
+  range: Range
+  setRange: (r: Range) => void
+  openTable: (o: BoardOrder) => void
+  floor: ReturnType<typeof useFloor>
+}) {
+  const { api, toast, riders } = useDash()
+  const [filterOpen, setFilterOpen] = useState(false)
   const live = orders.filter((o) => o.status !== 'cancelled')
   const groups: Record<string, BoardOrder[]> = {
     new: live.filter((o) => o.status === 'pending'),
@@ -193,68 +250,241 @@ function MobileOrders({ orders, act, revenue, range, setRange, openTable }: { or
     ready: live.filter((o) => o.status === 'ready'),
     delivered: live.filter((o) => o.status === 'delivered'),
   }
-  const [tab, setTab] = useState(groups.new.length ? 'new' : 'preparing')
+  const [tab, setTab] = useState<'new' | 'preparing' | 'ready' | 'delivered'>(groups.new.length ? 'new' : 'preparing')
   const list = groups[tab] ?? []
 
   const accept = async (o: DOrder) => {
-    try { await api.post('orders', 'accept', { orderId: o.id, prepMinutes: 20 }); toast(`#${o.order_number} accepted · ready in 20 min`); window.dispatchEvent(new Event('fk-orders-changed')) }
-    catch (e) { toast(e instanceof Error ? e.message : 'Could not accept') }
+    try {
+      await api.post('orders', 'accept', { orderId: o.id, prepMinutes: 20 })
+      toast(`#${o.order_number} accepted · ready in 20 min`)
+      window.dispatchEvent(new Event('fk-orders-changed'))
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Could not accept')
+    }
   }
+
   const decline = (o: DOrder) => act.setModal(
     <div className="modal" onClick={(e) => { if (e.target === e.currentTarget) act.close() }}>
-      <div className="mcard"><h3>Decline #{o.order_number}</h3>
-        <div className="rlist">{['Item unavailable', 'Kitchen full', 'Outside delivery area', 'Closing soon'].map((r) => (
-          <button key={r} onClick={async () => {
-            act.close()
-            try { await api.post('orders', 'decline', { orderId: o.id, reason: r }); toast(`#${o.order_number} declined · ${r}`); window.dispatchEvent(new Event('fk-orders-changed')) }
-            catch (e) { toast(e instanceof Error ? e.message : 'Could not decline') }
-          }}>{r}</button>
-        ))}</div>
+      <div className="mcard">
+        <h3>Decline #{o.order_number}</h3>
+        <div className="rlist">
+          {['Item unavailable', 'Kitchen full', 'Outside delivery area', 'Closing soon'].map((r) => (
+            <button key={r} onClick={async () => {
+              act.close()
+              try {
+                await api.post('orders', 'decline', { orderId: o.id, reason: r })
+                toast(`#${o.order_number} declined · ${r}`)
+                window.dispatchEvent(new Event('fk-orders-changed'))
+              } catch (e) {
+                toast(e instanceof Error ? e.message : 'Could not decline')
+              }
+            }}>{r}</button>
+          ))}
+        </div>
         <button className="btn ghost" onClick={act.close}>Cancel</button>
       </div>
     </div>,
   )
 
+  const currentRangeLabel = RANGE_LABELS[range] ?? 'Today'
+
   return (
     <section>
-      <RangeChips range={range} setRange={setRange} />
-      <div className="movrow">
-        <div className="mostat rev"><span>Revenue</span><b>{rs(revenue)}</b></div>
-        <div className="mostat"><span>Orders</span><b>{live.reduce((count, o) => count + (o.rounds?.length ?? 1), 0)}</b></div>
+      {/* Date filter dropdown */}
+      <div className="mofilter-row">
+        <span className="mofilter-label">Order summary</span>
+        <div className="mofilter-wrap">
+          <button className="mofilter-btn" onClick={() => setFilterOpen((v) => !v)} aria-expanded={filterOpen}>
+            {currentRangeLabel}
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ transition: 'transform .15s', transform: filterOpen ? 'rotate(180deg)' : 'none' }}>
+              <path d="M2.5 4.5L6 8L9.5 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {filterOpen && (
+            <div className="mofilter-drop">
+              {(Object.keys(RANGE_LABELS) as Range[]).map((k) => (
+                <button
+                  key={k}
+                  className={`mofilter-opt${range === k ? ' active' : ''}`}
+                  onClick={() => {
+                    setRange(k)
+                    setFilterOpen(false)
+                  }}
+                >
+                  <span>{RANGE_LABELS[k]}</span>
+                  {range === k && <span style={{ fontWeight: 800 }}>✓</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
-      <div className="mtabs">
-        {([['new', 'New'], ['preparing', 'Preparing'], ['ready', 'Ready / Out'], ['delivered', 'Done']] as const).map(([k, l]) => (
-          <button key={k} className="mtab" aria-pressed={tab === k} onClick={() => setTab(k)}>{l}{groups[k].length ? ` (${groups[k].length})` : ''}</button>
+
+      {/* Top 2 stats */}
+      <div className="movrow">
+        <div className="mostat rev">
+          <span>Revenue</span>
+          <b>{rs(revenue)}</b>
+        </div>
+        <div className="mostat">
+          <span>Total orders</span>
+          <b>{live.reduce((count, o) => count + (o.rounds?.length ?? 1), 0)}</b>
+        </div>
+      </div>
+
+      {/* Rasoi-style 2x2 Status Filter Grid */}
+      <div className="mstatus-grid" role="group" aria-label="Filter orders by status">
+        {([
+          { key: 'new' as const, label: 'New orders', hint: 'Needs action', count: groups.new.length, urgent: groups.new.length > 0 },
+          { key: 'preparing' as const, label: 'In kitchen', hint: 'Being prepared', count: groups.preparing.length, urgent: false },
+          { key: 'ready' as const, label: 'Ready / out', hint: 'Ready for next step', count: groups.ready.length, urgent: false },
+          { key: 'delivered' as const, label: 'Completed', hint: 'Served or fulfilled', count: groups.delivered.length, urgent: false },
+        ]).map((g) => (
+          <button
+            key={g.key}
+            type="button"
+            className={`mstatus-filter sts-${g.key}${tab === g.key ? ' selected' : ''}${g.urgent && tab !== g.key ? ' urgent' : ''}`}
+            aria-pressed={tab === g.key}
+            onClick={() => setTab(g.key)}
+          >
+            <span className="mstatus-filter-label">{g.label}</span>
+            <strong className="mstatus-filter-count">{g.count}</strong>
+            <span className="mstatus-filter-hint">{g.hint}</span>
+          </button>
         ))}
       </div>
+
+      {/* Tables rail for floor staff */}
+      {floor.data && floor.data.tables.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <TableRail floor={floor} mobile />
+        </div>
+      )}
+
+      {/* List of cards */}
       <div className="molist">
-        {list.length ? list.map((o) => o.rounds ? <TableOrderCard key={o.table_session_id} order={o} act={act} mobile onOpen={() => openTable(o)} /> : (
-          <div key={o.id} className="mocard">
-            <div className="morow"><b>#{o.order_number}</b><span>{ist(o.created_at)} · <Age o={o} /></span></div>
-            <div className="osub">{o.order_type === 'dine-in' ? `Table ${o.table_number ?? '?'}` : customerName(o)}{o.customer?.phone ? ` · ${phoneShort(o.customer.phone)}` : ''}</div>
-            {o.delivery_address && <div className="osub">📍 {o.delivery_address}</div>}
-            <div className="oitems">{o.items.map((l) => `${l.quantity} × ${l.name_snapshot}`).join(', ')}</div>
-            {o.items.filter((l) => l.notes).map((l) => <div key={l.id} className="linote">📝 {l.name_snapshot}: {l.notes}</div>)}
-            {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
-            <div className="moamt">{rs(o.total_paise)} · <span style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'capitalize' }}>{statusLabel(o)}</span></div>
-            <div className="moacts">
-              {o.status === 'pending' && <>
-                <button className="mobtn go" onClick={() => void accept(o)}>Accept</button>
-                <button className="mobtn bad" onClick={() => decline(o)}>Reject</button>
-              </>}
-              {['preparing', 'confirmed'].includes(o.status) && (o.order_type === 'dine-in'
-                ? <button className="mobtn go" onClick={() => void act.setStatus(o, 'ready')}>✓ Mark served</button>
-                : <button className="mobtn go" onClick={() => o.order_type === 'delivery' && !o.rider_id ? act.assignRider(o, () => void act.setStatus(o, 'ready')) : void act.setStatus(o, 'ready')}>Ready / dispatch</button>)}
-              {o.status === 'ready' && <>
-                <button className="mobtn go" onClick={() => void act.markDone(o)}>{o.table_session_id ? 'Close table & mark done' : 'Mark delivered'}</button>
-                {!o.cash_collected && <button className="mobtn" onClick={() => void act.cash(o)}>💵 {rs(o.total_paise)}</button>}
-              </>}
-              {canEdit(o) && <button className="mobtn" onClick={() => act.edit(o)}>Edit</button>}
-              <button className="mobtn" onClick={() => act.print(o)}>Print</button>
-              <button className="mobtn" onClick={() => act.printKOT(o)}>KOT</button>
+        {list.length ? list.map((o) => {
+          if (o.rounds) return <TableOrderCard key={o.table_session_id} order={o} act={act} mobile onOpen={() => openTable(o)} />
+          const rider = riders.find((r) => r.id === o.rider_id)
+          const paidUp = o.cash_collected
+          const stageKey = o.status === 'delivered' ? 'delivered' : o.status === 'ready' ? 'ready' : o.status === 'pending' ? 'new' : 'preparing'
+
+          return (
+            <div key={o.id} className={`mocard sts-${stageKey} source-${o.source}`}>
+              <div className="morow">
+                <b>#{o.order_number}</b>
+                <span>{ist(o.created_at)} · <Age o={o} /></span>
+              </div>
+
+              <MobileOrderProgress order={o} />
+
+              <div className="mosub">
+                {o.order_type === 'dine-in' ? `Table ${o.table_number ?? '?'}` : customerName(o)}
+                {o.customer?.phone ? ` · ${phoneShort(o.customer.phone)}` : ''}
+              </div>
+
+              {o.delivery_address && (
+                <div className="mosub" style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 500 }}>
+                  📍 {o.delivery_address}{o.delivery_pincode ? ` — ${o.delivery_pincode}` : ''}
+                </div>
+              )}
+
+              <div className="motags">
+                <span className={`tag ${o.order_type === 'delivery' ? 'dl' : o.order_type === 'dine-in' ? 'din' : 'tk'}`}>
+                  {o.order_type === 'delivery' ? '🚚 Delivery' : o.order_type === 'dine-in' ? `🍽️ Dine-in · Table ${o.table_number ?? '?'}` : '🛍️ Takeaway'}
+                </span>
+                <span className={`tag src src-${o.source}`}>
+                  {o.source === 'whatsapp' ? '💬 WhatsApp' : o.source === 'pos' ? '🛒 POS' : '🌐 Web'}
+                </span>
+                {o.amendment_count > 0 && <span className="tag am">Amended ×{o.amendment_count}</span>}
+                {o.discount_paise > 0 && <span className="tag disc">Disc {rs(o.discount_paise)}</span>}
+                {rider && <span className="tag dl">🛵 {rider.name}</span>}
+              </div>
+
+              <div className="moitems">
+                {o.items.map((l) => (
+                  <div key={l.id} className="moli">
+                    <span>{l.quantity} × {l.name_snapshot}</span>
+                    <span className="moprice">{rs(l.unit_price_paise * l.quantity)}</span>
+                  </div>
+                ))}
+                {o.items.filter((l) => l.notes).map((l) => (
+                  <div key={`note-${l.id}`} className="linote" style={{ marginTop: 4 }}>
+                    📝 {l.name_snapshot}: {l.notes}
+                  </div>
+                ))}
+              </div>
+
+              {o.special_instructions && (
+                <div className="ordnote" style={{ marginBottom: 8 }}>
+                  📝 ORDER NOTE: {o.special_instructions}
+                </div>
+              )}
+
+              {o.order_type !== 'dine-in' && ['ready', 'delivered'].includes(o.status) && !paidUp && (
+                <div className="money due" style={{ marginBottom: 8 }}>
+                  💵 Collect {rs(o.total_paise)} {o.order_type === 'delivery' ? 'on delivery' : 'at counter'}
+                </div>
+              )}
+              {paidUp && (
+                <div className="money" style={{ marginBottom: 8 }}>
+                  ✓ {rs(o.cash_amount_paise ?? o.total_paise)} collected
+                </div>
+              )}
+              {o.cancel_reason && (
+                <div className="money bad" style={{ marginBottom: 8 }}>
+                  ✕ {o.cancel_reason}
+                </div>
+              )}
+
+              <div className="moamt">
+                <span>Total {rs(o.total_paise)}</span>
+                <span style={{ fontSize: 12, color: 'var(--muted)', textTransform: 'capitalize', fontWeight: 600 }}>
+                  {statusLabel(o)}
+                </span>
+              </div>
+
+              <div className="moacts">
+                {o.status === 'pending' && (
+                  <>
+                    <button className="mobtn go" onClick={() => void accept(o)}>Accept</button>
+                    <button className="mobtn bad" onClick={() => decline(o)}>Reject</button>
+                  </>
+                )}
+                {['preparing', 'confirmed'].includes(o.status) && (
+                  o.order_type === 'dine-in' ? (
+                    <button className="mobtn go" onClick={() => void act.setStatus(o, 'ready')}>✓ Mark served</button>
+                  ) : (
+                    <button
+                      className="mobtn go"
+                      onClick={() => o.order_type === 'delivery' && !o.rider_id ? act.assignRider(o, () => void act.setStatus(o, 'ready')) : void act.setStatus(o, 'ready')}
+                    >
+                      Ready / dispatch
+                    </button>
+                  )
+                )}
+                {o.status === 'ready' && (
+                  <>
+                    <button className="mobtn go" onClick={() => void act.markDone(o)}>
+                      {o.table_session_id ? 'Close table & mark done' : 'Mark delivered'}
+                    </button>
+                    {!paidUp && (
+                      <button className="mobtn cash" onClick={() => void act.cash(o)}>
+                        💵 Collect {rs(o.total_paise)}
+                      </button>
+                    )}
+                  </>
+                )}
+                {canEdit(o) && <button className="mobtn" onClick={() => act.edit(o)}>Edit</button>}
+                <button className="mobtn" onClick={() => act.print(o)}>Print</button>
+                <button className="mobtn" onClick={() => act.printKOT(o)}>KOT</button>
+                {!['delivered', 'cancelled'].includes(o.status) && (
+                  <button className="mobtn bad" onClick={() => act.cancel(o)}>Cancel</button>
+                )}
+              </div>
             </div>
-          </div>
-        )) : <div className="none">Nothing here</div>}
+          )
+        }) : <div className="none">No orders in this status</div>}
       </div>
     </section>
   )
