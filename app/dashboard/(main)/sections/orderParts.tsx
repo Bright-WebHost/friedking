@@ -46,6 +46,17 @@ export function TypeTag({ o }: { o: DOrder }) {
   return <span className={`tag ${cls}`}>{typeLabel(o.order_type)}{o.table_number ? ` · T${o.table_number}` : ''}</span>
 }
 
+/** Where the order came from. WhatsApp is green. */
+export function SourceTag({ o }: { o: DOrder }) {
+  const label = o.source === 'whatsapp' ? '💬 WhatsApp' : o.source === 'pos' ? '🛒 POS' : '🌐 Website'
+  return <span className={`tag src src-${o.source}`}>{label}</span>
+}
+
+/** Who took the order (waiter / staff), for POS and table orders. */
+export function StaffTag({ o }: { o: DOrder }) {
+  return o.taken_by ? <span className="tag staff" title="Order taken by">👤 {o.taken_by}</span> : null
+}
+
 /** Everything you can do to an order, plus the modal currently open. */
 export function useOrderActions(reload: () => unknown) {
   const { api, toast, settings, branch, riders, staff } = useDash()
@@ -172,7 +183,7 @@ function OrderDetails({ o, rounds, onClose }: { o: DOrder; rounds?: DOrder[]; on
     <Modal onClose={onClose} className="wide">
       <h3 style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>#{o.order_number}</span><span style={{ fontSize: 14, color: 'var(--muted)', textTransform: 'capitalize' }}>{statusLabel(o)}</span></h3>
       <div className="tags" style={{ marginBottom: 10 }}>
-        <TypeTag o={o} /><span className="tag">{o.source}</span>
+        <TypeTag o={o} /><SourceTag o={o} /><StaffTag o={o} />
         {o.amendment_count > 0 && <span className="tag am">Amended ×{o.amendment_count}</span>}
         {o.discount_paise > 0 && <span className="tag disc">Discount {rs(o.discount_paise)}</span>}
       </div>

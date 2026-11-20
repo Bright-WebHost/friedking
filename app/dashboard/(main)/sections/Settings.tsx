@@ -14,6 +14,7 @@ interface SettingsData {
   staff: StaffRow[]
   categories: Array<{ id: string; name: string; image_url: string | null }>
   promotions: Banner[]
+  shiftReport?: { lastStatus: string; lastAt: string; queued: boolean }
 }
 
 export default function Settings() {
@@ -114,6 +115,23 @@ export default function Settings() {
         )}
         {field('Delivery note shown to customers', <input className="f" value={st.delivery_note} onChange={setSet('delivery_note')} />)}
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>Saved per branch. The website uses the fee, the free-delivery offer, the minimum order, the pincodes below and the order types above.</div>
+      </div>
+
+      <div className="panel"><h3>Shift closing report</h3>
+        <p className="asub" style={{ marginTop: -6 }}>Every day at the time below, a summary of the shift (orders, sales, cash, cancellations, top items, staff) is sent on WhatsApp to these numbers.</p>
+        <label className="avrow"><input type="checkbox" className="cbox" checked={st.shift_report_enabled === 'true'} onChange={(e) => setS({ ...st, shift_report_enabled: e.target.checked ? 'true' : 'false' })} /> <span><b>Send the report every day</b></span></label>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ flex: '0 0 160px' }}>{field('Send at (IST)', <input className="f" type="time" value={st.shift_report_time} onChange={setSet('shift_report_time')} />)}</div>
+          <div style={{ flex: 1, minWidth: 220 }}>{field('WhatsApp numbers (separate with commas)', <input className="f" inputMode="tel" value={st.shift_report_numbers} onChange={setSet('shift_report_numbers')} placeholder="e.g. 9852225222, 9180108354" />)}</div>
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+          {data.shiftReport?.lastStatus ? `Last report: ${data.shiftReport.lastStatus}` : 'No report sent yet.'}
+          {data.shiftReport?.queued ? ' · A report is queued and will be sent within a minute.' : ''}
+        </div>
+        <button className="btn sm ghost" disabled={dirty || saving} title={dirty ? 'Save your changes first' : ''} onClick={async () => {
+          try { await api.post('settings', 'shiftReportNow'); toast('Report queued - it arrives on WhatsApp within a minute'); void reload() } catch (e) { fail(e) }
+        }}>Send a report now</button>
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 8 }}>Outside WhatsApp&apos;s 24-hour window the report goes as the approved template, so a number that has not messaged us recently still receives it.</div>
       </div>
 
       <div className="panel"><h3>Delivery pincodes</h3>

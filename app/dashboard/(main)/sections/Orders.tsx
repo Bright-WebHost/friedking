@@ -7,7 +7,7 @@ import { isBoss } from '@/lib/dashboard/access'
 import {
   customerName, ist, Loading, phoneShort, RangeChips, rangeBounds, rs, Slide, statusLabel, useDash, useIsMobile, useLoad, usePoll, useTick, type Range,
 } from '../kit'
-import { Age, canEdit, LineItems, TypeTag, useOrderActions } from './orderParts'
+import { Age, canEdit, LineItems, SourceTag, StaffTag, TypeTag, useOrderActions } from './orderParts'
 import { TableRail, useFloor } from './Tables'
 import TableOrderCard from './TableOrderCard'
 
@@ -106,7 +106,7 @@ export default function Orders() {
         {o.special_instructions && <div className="ordnote">📝 ORDER NOTE: {o.special_instructions}</div>}
         {o.delivery_address && <div className="addr">📍 {o.delivery_address}{o.delivery_pincode ? ` — ${o.delivery_pincode}` : ''}</div>}
         <div className="tags">
-          <TypeTag o={o} /><span className="tag">{o.source}</span>
+          <TypeTag o={o} /><SourceTag o={o} /><StaffTag o={o} />
           {o.amendment_count > 0 && <span className="tag am">Amended ×{o.amendment_count}</span>}
           {o.discount_paise > 0 && <span className="tag disc">Disc {rs(o.discount_paise)}</span>}
           <Age o={o} />
@@ -124,7 +124,6 @@ export default function Orders() {
           <div className="money due">💵 Collect {rs(o.total_paise)} {o.order_type === 'delivery' ? 'on delivery' : 'at the counter'}</div>}
         {paidUp && <div className="money">✓ {rs(o.cash_amount_paise ?? o.total_paise)} collected</div>}
         {o.cancel_reason && <div className="money bad">✕ {o.cancel_reason}{o.cancelled_by ? ` · ${o.cancelled_by}` : ''}</div>}
-        {o.taken_by && <div className="whotook">Order by {o.taken_by}</div>}
         {paidUp && o.payment_taken_by && <div className="whotook">Taken by {o.payment_taken_by}</div>}
         <div className="mini">
           {['ready', 'delivered'].includes(o.status) && o.order_type === 'delivery' && !o.rider_id && <button onClick={() => act.assignRider(o)}>Assign rider</button>}
@@ -372,7 +371,7 @@ function MobileOrders({
           const stageKey = o.status === 'delivered' ? 'delivered' : o.status === 'ready' ? 'ready' : o.status === 'pending' ? 'new' : 'preparing'
 
           return (
-            <div key={o.id} className={`mocard sts-${stageKey} source-${o.source}`}>
+            <div key={o.id} className={`mocard sts-${stageKey} source-${o.source} ch-${o.order_type}`}>
               <div className="morow">
                 <b>#{o.order_number}</b>
                 <span>{ist(o.created_at)} · <Age o={o} /></span>
@@ -395,9 +394,8 @@ function MobileOrders({
                 <span className={`tag ${o.order_type === 'delivery' ? 'dl' : o.order_type === 'dine-in' ? 'din' : 'tk'}`}>
                   {o.order_type === 'delivery' ? '🚚 Delivery' : o.order_type === 'dine-in' ? `🍽️ Dine-in · Table ${o.table_number ?? '?'}` : '🛍️ Takeaway'}
                 </span>
-                <span className={`tag src src-${o.source}`}>
-                  {o.source === 'whatsapp' ? '💬 WhatsApp' : o.source === 'pos' ? '🛒 POS' : '🌐 Web'}
-                </span>
+                <SourceTag o={o} />
+                <StaffTag o={o} />
                 {o.amendment_count > 0 && <span className="tag am">Amended ×{o.amendment_count}</span>}
                 {o.discount_paise > 0 && <span className="tag disc">Disc {rs(o.discount_paise)}</span>}
                 {rider && <span className="tag dl">🛵 {rider.name}</span>}

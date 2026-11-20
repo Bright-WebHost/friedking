@@ -1003,3 +1003,21 @@
   .fkd .seg3.nodine-phone { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fkd .seg3.nodine-phone .dinebtn { display: none; }
 }
+
+/* ======================================================================
+   Order cards are coloured by how the customer gets the food:
+   delivery = blue, takeaway = yellow, dine-in = purple. WhatsApp orders carry a green tag.
+   ====================================================================== */
+.fkd {
+  & .o.ch-delivery, & .mocard.ch-delivery { background: linear-gradient(180deg, #e9f2fd 0%, #f6faff 100%); border-color: #b9d4f1; border-left: 5px solid #1a5fa8; }
+  & .o.ch-pickup,   & .mocard.ch-pickup   { background: linear-gradient(180deg, #fff6c9 0%, #fffbe6 100%); border-color: #efd877; border-left: 5px solid #e0a800; }
+  & .o.ch-dine-in,  & .mocard.ch-dine-in  { background: linear-gradient(180deg, #efe9ff 0%, #f8f5ff 100%); border-color: #cfc2f5; border-left: 5px solid #5b3fbf; }
+  & .o .slide, & .o .mini button, & .mocard .mobtn:not(.go):not(.bad) { background-color: rgba(255,255,255,.85); }
+  & .tag.tk { background: #ffe58a; color: #7a5800; }
+  & .tag.dl { background: #cfe3fa; color: #14508f; }
+  & .tag.din { background: #dcd1fa; color: #4a2fa6; }
+  & .tag.src-whatsapp { background: #16a34a; color: #fff; }
+  & .tag.src-web, & .tag.src-online { background: #e8f2ff; color: #1a5fa8; }
+  & .tag.src-pos { background: #fff2db; color: #946000; }
+  & .tag.staff { background: #1c1414; color: #fff; text-transform: none; letter-spacing: 0; }
+}

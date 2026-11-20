@@ -10,6 +10,10 @@ export const SETTING_DEFAULTS = {
   delivery_fee: '0',
   free_delivery_enabled: 'false',
   free_delivery_above: '0',
+  // Daily shift closing report on WhatsApp (sent by n8n "Fried King | Shift Report", see supabase/friedking_shift_report.sql)
+  shift_report_enabled: 'false',
+  shift_report_time: '23:45',
+  shift_report_numbers: '',
   delivery_note: '',
   payment_methods: 'Cash or UPI at the counter or on delivery.',
   auto_print: 'false',

@@ -9,6 +9,24 @@ const time = (v: unknown) => {
   return /^\d{2}:\d{2}(:\d{2})?$/.test(s) ? s : null
 }
 
+/** Shift report settings are checked here so a typo cannot silently stop the report. */
+function cleanSetting(key: string, raw: unknown): string {
+  const v = str(raw, 1000)
+  if (key === 'shift_report_time') {
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v)) throw new HttpError(400, 'Report time must look like 23:45')
+    return v
+  }
+  if (key === 'shift_report_numbers') {
+    // numbers are separated by commas or new lines; spaces and +91 inside a number are fine
+    const nums = v.split(/[,;\n]+/).map((t) => t.replace(/\D/g, '')).filter(Boolean).map((d) => d.slice(-10))
+    const bad = nums.find((d) => !/^[6-9][0-9]{9}$/.test(d))
+    if (bad) throw new HttpError(400, `"${bad}" is not a valid 10-digit mobile number`)
+    return [...new Set(nums)].join(', ')
+  }
+  if (key === 'shift_report_enabled') return v === 'true' ? 'true' : 'false'
+  return v
+}
+
 export const settingsHandler: Handler = {
   sections: ['settings'],
   async get(ctx) {
@@ -25,7 +43,11 @@ export const settingsHandler: Handler = {
       if (!email) email = (await ctx.admin.auth.admin.getUserById(s.user_id)).data.user?.email ?? null
       return { user_id: s.user_id, name: s.name ?? null, email, role: s.role, branch_id: s.branch_id, is_active: s.is_active !== false, created_at: s.created_at }
     }))
+    const { data: sr } = await ctx.admin.from('branch_settings').select('key, value').eq('branch_id', ctx.branch.id)
+      .in('key', ['shift_report_last_status', 'shift_report_last_at', 'shift_report_force'])
+    const srMap = Object.fromEntries((sr ?? []).map((r) => [r.key as string, (r.value as string | null) ?? '']))
     return {
+      shiftReport: { lastStatus: srMap.shift_report_last_status ?? '', lastAt: srMap.shift_report_last_at ?? '', queued: srMap.shift_report_force === '1' },
       branch: ctx.branch, settings,
       pincodes: check(pincodes, 'load pincodes') ?? [],
       staff: staffRows, me: ctx.staff.userId,
@@ -50,10 +72,16 @@ export const settingsHandler: Handler = {
       if (Object.keys(branchUpdate).length) { check(await ctx.admin.from('branches').update(branchUpdate).eq('id', ctx.branch.id), 'save the branch'); clearBranchCache() }
 
       const rows = SETTING_KEYS.filter((k) => k !== 'blast_monthly_limit' && b.settings && k in b.settings).map((key) => ({
-        branch_id: ctx.branch.id, key, value: str(b.settings[key], 1000), updated_at: new Date().toISOString(),
+        branch_id: ctx.branch.id, key, value: cleanSetting(key, b.settings[key]), updated_at: new Date().toISOString(),
       }))
       if (rows.length) check(await ctx.admin.from('branch_settings').upsert(rows, { onConflict: 'branch_id,key' }), 'save settings')
       await audit(ctx, { action: 'settings_update', detail: `by ${ctx.staff.name}` })
+      return { ok: true }
+    },
+    /** "Send report now": n8n picks it up within a minute (WhatsApp sends never leave the dashboard directly). */
+    async shiftReportNow(ctx) {
+      check(await ctx.admin.from('branch_settings').upsert({ branch_id: ctx.branch.id, key: 'shift_report_force', value: '1', updated_at: new Date().toISOString() }, { onConflict: 'branch_id,key' }), 'queue the report')
+      await audit(ctx, { action: 'shift_report_now', detail: `by ${ctx.staff.name}` })
       return { ok: true }
     },
     async logo(ctx, b) {

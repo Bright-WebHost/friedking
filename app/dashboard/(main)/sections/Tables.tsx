@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import type { DOrder, DSession, DTable } from '@/lib/dashboard/types'
 import { ist, minsSince, Modal, phoneShort, printReceipt, printTableQR, rs, statusLabel, todayIST, useDash, useLoad, usePoll } from '../kit'
-import { canEdit, LineItems, type useOrderActions } from './orderParts'
+import { canEdit, LineItems, SourceTag, StaffTag, type useOrderActions } from './orderParts'
 
 /** Table state. "new" = a round is waiting for staff to accept it (website orders). */
 export type TableState = 'free' | 'busy' | 'new' | 'ready' | 'pay'
@@ -119,6 +119,7 @@ export function useFloor() {
                 {rounds.length ? rounds.map((o, i) => (
                   <div className="rnd" key={o.id}>
                     <div className="rh"><span>Round {i + 1} · {statusLabel(o)}</span><span>{rs(o.total_paise)}</span></div>
+                    <div className="tags" style={{ marginTop: 4, marginBottom: 4 }}><SourceTag o={o} /><StaffTag o={o} /></div>
                     <LineItems o={o} />
                     <div className="mini">
                       {o.status === 'pending' && <button className="go" onClick={async () => {
