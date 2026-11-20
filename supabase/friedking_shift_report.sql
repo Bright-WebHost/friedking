@@ -10,6 +10,8 @@
 --                                                    -> complete_shift_report() saves what happened (shown in Settings)
 -- The report covers everything since the previous report (or since midnight IST for the first one). "Send report now" in Settings
 -- sends one straight away without disturbing the scheduled one.
+-- The report is sent as a receipt-style IMAGE (same figures as Analytics > Shift Close Report), drawn by the app at
+-- /api/shift-report?t=<token>; the figures and a one-time token are stored in branch_settings.shift_report_image.
 -- ============================================================
 
 -- Defaults for Pandeshwar (only inserted when not set yet; change them in Dashboard > Settings afterwards)
@@ -33,7 +35,7 @@ declare
   r record; v_orders int; v_sales numeric; v_gst numeric; v_cancel_n int; v_cancel_v numeric; v_cash numeric; v_pending_cash numeric; v_disc numeric;
   v_open_new int; v_open_kitchen int;
   v_by_type jsonb; v_by_src jsonb; v_top text; v_staff text; v_label text; v_period text; v_text text; v_split text; v_top1 text;
-  v_rec jsonb;
+  v_rec jsonb; v_token text; v_data jsonb; v_top10 jsonb; v_staffon jsonb;
 begin
   select * into b from branches where slug = p_branch;
   if not found then return jsonb_build_object('send', false, 'reason', 'unknown branch'); end if;
@@ -67,7 +69,7 @@ begin
          coalesce(sum(gst_paise) filter (where status::text <> 'cancelled'), 0),
          count(*) filter (where status::text = 'cancelled'), coalesce(sum(total_paise) filter (where status::text = 'cancelled'), 0),
          coalesce(sum(coalesce(cash_amount_paise, total_paise)) filter (where status::text <> 'cancelled' and cash_collected), 0),
-         coalesce(sum(total_paise) filter (where status::text in ('preparing', 'ready', 'delivered') and not cash_collected), 0),
+         coalesce(sum(total_paise) filter (where status::text <> 'cancelled' and not cash_collected), 0),
          coalesce(sum(coalesce(discount_paise, 0) + coalesce(loyalty_discount_paise, 0)) filter (where status::text <> 'cancelled'), 0),
          count(*) filter (where status::text in ('pending', 'confirmed')), count(*) filter (where status::text in ('preparing', 'ready'))
     into v_orders, v_sales, v_gst, v_cancel_n, v_cancel_v, v_cash, v_pending_cash, v_disc, v_open_new, v_open_kitchen
@@ -88,9 +90,32 @@ begin
            where branch_id = b.id and created_at >= v_from and created_at < v_now and status::text not in ('draft', 'cancelled') and nullif(trim(taken_by), '') is not null
            group by 1) x;
 
+  select coalesce(jsonb_agg(jsonb_build_object('name', name, 'qty', q) order by q desc, name), '[]'::jsonb) into v_top10
+    from (select i.name_snapshot as name, sum(i.quantity) q from order_items i join orders o on o.id = i.order_id
+           where o.branch_id = b.id and o.created_at >= v_from and o.created_at < v_now and o.status::text not in ('draft', 'cancelled')
+           group by 1 order by sum(i.quantity) desc, 1 limit 10) t;
+  select coalesce(jsonb_agg(w order by w), '[]'::jsonb) into v_staffon
+    from (select distinct trim(x.v) as w from orders o cross join lateral (values (o.taken_by), (o.accepted_by)) x(v)
+           where o.branch_id = b.id and o.created_at >= v_from and o.created_at < v_now and o.status::text not in ('draft', 'cancelled')
+             and nullif(trim(x.v), '') is not null) s;
+
   v_label := to_char(v_today, 'DD Mon YYYY');
   v_period := to_char(v_from at time zone 'Asia/Kolkata', 'DD Mon HH12:MI AM') || ' to ' || to_char(v_now at time zone 'Asia/Kolkata', 'DD Mon HH12:MI AM');
   v_split := 'Delivery ' || coalesce((v_by_type->'delivery'->>'n'), '0') || ', Takeaway ' || coalesce((v_by_type->'pickup'->>'n'), '0') || ', Dine-in ' || coalesce((v_by_type->'dine-in'->>'n'), '0');
+
+  v_data := jsonb_build_object(
+    'branch', b.name, 'label', v_label, 'period', v_period, 'generated', to_char(v_now at time zone 'Asia/Kolkata', 'DD Mon YYYY, HH12:MI AM'),
+    'revenue', v_sales, 'orders', v_orders, 'avg', case when v_orders > 0 then round(v_sales / v_orders) else 0 end, 'gst', v_gst,
+    'cancelled', v_cancel_n, 'cancelled_paise', v_cancel_v, 'discounts', v_disc,
+    'channels', jsonb_build_array(
+      jsonb_build_object('label', 'Delivery', 'n', coalesce((v_by_type->'delivery'->>'n')::int, 0), 'paise', coalesce((v_by_type->'delivery'->>'paise')::numeric, 0)),
+      jsonb_build_object('label', 'Takeaway', 'n', coalesce((v_by_type->'pickup'->>'n')::int, 0), 'paise', coalesce((v_by_type->'pickup'->>'paise')::numeric, 0)),
+      jsonb_build_object('label', 'Dine-in', 'n', coalesce((v_by_type->'dine-in'->>'n')::int, 0), 'paise', coalesce((v_by_type->'dine-in'->>'paise')::numeric, 0))),
+    'sources', v_by_src, 'cash_collected', v_cash, 'cash_pending', v_pending_cash, 'staff', v_staffon, 'top', v_top10,
+    'open_new', v_open_new, 'open_kitchen', v_open_kitchen);
+  v_token := replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', '');
+  insert into branch_settings (branch_id, key, value) values (b.id, 'shift_report_image', jsonb_build_object('token', v_token, 'data', v_data)::text)
+    on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
 
   v_text := E'📊 *Fried King - Shift report*\n' || b.name || E'\n' || v_period || E'\n\n' ||
     '*Orders:* ' || v_orders || E'   *Sales:* ' || public.fk_rs(v_sales) || E'\n' ||
@@ -122,10 +147,9 @@ begin
   insert into branch_settings (branch_id, key, value) values (b.id, 'shift_report_last_status', 'Sending... (' || v_period || ')')
     on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
 
-  return jsonb_build_object('send', true, 'forced', v_force, 'recipients', v_rec, 'text', v_text,
-    'template', jsonb_build_object('name', 'friedking_shift_report', 'params', jsonb_build_array(
-      v_label, v_orders::text, public.fk_rs(v_sales), v_split, public.fk_rs(v_cash),
-      v_cancel_n::text || case when v_cancel_n > 0 then ' (' || public.fk_rs(v_cancel_v) || ')' else '' end, coalesce(v_top1, 'none'))),
+  return jsonb_build_object('send', true, 'forced', v_force, 'recipients', v_rec, 'text', v_text, 'image_token', v_token,
+    'caption', E'📊 Fried King shift closing report - ' || v_label || E'\nOrders: ' || v_orders || ' · Sales: ' || public.fk_rs(v_sales),
+    'template', jsonb_build_object('name', 'friedking_shift_report', 'params', jsonb_build_array(v_label, v_orders::text, public.fk_rs(v_sales))),
     'report', jsonb_build_object('from', v_from, 'to', v_now, 'orders', v_orders, 'sales_paise', v_sales, 'cancelled', v_cancel_n, 'cash_paise', v_cash));
 end $$;
 

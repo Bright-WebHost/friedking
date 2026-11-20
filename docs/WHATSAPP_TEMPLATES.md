@@ -129,22 +129,22 @@ Tap below to order your favourites in a few clicks!
 
 ---
 
-## 6. `friedking_shift_report` (daily shift closing report to the owners)
+## 6. `friedking_shift_report` (daily shift closing report: a receipt-style image, same as Analytics > Shift Close Report)
 
-Create it in YCloud / Meta WhatsApp Manager. The report is sent as plain text to a number that messaged us in the last 24 hours;
-everyone else needs this approved template (staff numbers rarely message the bot first).
+The report is an IMAGE drawn by the app (`/api/shift-report`). A number that messaged us in the last 24 hours gets it as a normal
+image message; everyone else needs this approved template with an image header (staff numbers rarely message the bot first).
 
 | Field | Value |
 |---|---|
 | Name | `friedking_shift_report` |
 | Category | **Utility** |
 | Language | English (`en`) |
-| Variable type | **Number** ({{1}}, {{2}}...) |
-| Header | None |
-| Body | `Fried King shift report for {{1}}. Orders: {{2}}. Sales: {{3}}. Split: {{4}}. Cash collected: {{5}}. Cancelled: {{6}}. Top seller: {{7}}.` |
+| Variable type | **Number** ({{1}}, {{2}}, {{3}}) |
+| Header | **Media > Image** (upload any sample picture, for example a receipt screenshot; the real report image is attached on every send) |
+| Body | `Fried King shift closing report for {{1}}. Orders: {{2}}. Sales: {{3}}. The full report is in the picture above.` |
 | Buttons / footer | none |
 
-Sample values for review: `{{1}}` = 20 Nov 2026, `{{2}}` = 24, `{{3}}` = Rs 18,450, `{{4}}` = Delivery 9, Takeaway 8, Dine-in 7, `{{5}}` = Rs 16,000, `{{6}}` = 2 (Rs 1,100), `{{7}}` = King's Zinger Burger x14
+Sample values for review: `{{1}}` = 20 Nov 2026, `{{2}}` = 24, `{{3}}` = Rs 18,450
 
 Set in Dashboard > Settings > Shift closing report (switch, time in IST, numbers). n8n workflow: `Fried King | Shift Report` (every minute).
 Database: `supabase/friedking_shift_report.sql`.

@@ -118,7 +118,7 @@ export default function Settings() {
       </div>
 
       <div className="panel"><h3>Shift closing report</h3>
-        <p className="asub" style={{ marginTop: -6 }}>Every day at the time below, a summary of the shift (orders, sales, cash, cancellations, top items, staff) is sent on WhatsApp to these numbers.</p>
+        <p className="asub" style={{ marginTop: -6 }}>Every day at the time below, the shift closing report (the same summary as Analytics › Shift Close Report: revenue, orders, channels, cash, staff on duty, top items) is sent on WhatsApp as a picture to these numbers.</p>
         <label className="avrow"><input type="checkbox" className="cbox" checked={st.shift_report_enabled === 'true'} onChange={(e) => setS({ ...st, shift_report_enabled: e.target.checked ? 'true' : 'false' })} /> <span><b>Send the report every day</b></span></label>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
           <div style={{ flex: '0 0 160px' }}>{field('Send at (IST)', <input className="f" type="time" value={st.shift_report_time} onChange={setSet('shift_report_time')} />)}</div>

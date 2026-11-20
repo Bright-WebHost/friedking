@@ -37,6 +37,22 @@ def node(name, type_, params, x, cred=None, version=1, extra=None):
     return n
 
 
+BUILD_MESSAGES_JS = '''// One message per number. The report is an IMAGE drawn by the app (same figures as Analytics > Shift Close Report):
+// an image message with a caption inside the 24-hour window, the approved template with an image header outside it.
+var r = $input.first().json;
+var url = 'https://friedking.vercel.app/api/shift-report?t=' + String(r.image_token || '');
+var tpl = r.template || { name: 'friedking_shift_report', params: [] };
+return (r.recipients || []).map(function (x) {
+  var outgoing = x.in_window
+    ? { type: 'image', image: { link: url, caption: String(r.caption || 'Fried King shift closing report') } }
+    : { type: 'template', template: { name: tpl.name, language: { code: 'en' }, components: [
+        { type: 'header', parameters: [{ type: 'image', image: { link: url } }] },
+        { type: 'body', parameters: (tpl.params || []).map(function (p) { return { type: 'text', text: String(p) }; }) }
+      ] } };
+  return { json: { to: String(x.phone || '').replace(/[^0-9]/g, ''), via: x.in_window ? 'image' : 'template', outgoing: outgoing } };
+});
+'''
+
 nodes = [
     node('Every Minute', 'n8n-nodes-base.scheduleTrigger', {'rule': {'interval': [{'field': 'minutes', 'minutesInterval': 1}]}}, 0, version=V['sched']),
     node('Claim Report', 'n8n-nodes-base.httpRequest', {
@@ -47,17 +63,7 @@ nodes = [
         'options': {'caseSensitive': True, 'leftValue': '', 'typeValidation': 'loose', 'version': 3},
         'conditions': [{'id': 's1', 'leftValue': '={{ $json.send }}', 'rightValue': '', 'operator': {'type': 'boolean', 'operation': 'true', 'singleValue': True}}],
         'combinator': 'and'}, 'options': {}}, 480, version=V['if']),
-    node('Build Messages', 'n8n-nodes-base.code', {'jsCode': """// One message per number: plain text inside the 24-hour window, the approved template outside it.
-var r = $input.first().json;
-var tpl = r.template || { name: 'friedking_shift_report', params: [] };
-return (r.recipients || []).map(function (x) {
-  var outgoing = x.in_window
-    ? { type: 'text', text: { body: String(r.text || '') } }
-    : { type: 'template', template: { name: tpl.name, language: { code: 'en' },
-        components: [{ type: 'body', parameters: (tpl.params || []).map(function (p) { return { type: 'text', text: String(p) }; }) }] } };
-  return { json: { to: String(x.phone || '').replace(/[^0-9]/g, ''), via: x.in_window ? 'text' : 'template', outgoing: outgoing } };
-});
-"""}, 720, version=V['code']),
+    node('Build Messages', 'n8n-nodes-base.code', {'jsCode': BUILD_MESSAGES_JS}, 720, version=V['code']),
     node('Send WhatsApp', 'n8n-nodes-base.httpRequest', {
         'method': 'POST', 'url': 'https://api.ycloud.com/v2/whatsapp/messages', 'authentication': 'genericCredentialType', 'genericAuthType': 'httpHeaderAuth',
         'sendHeaders': True, 'headerParameters': HDR, 'sendBody': True, 'specifyBody': 'json',
