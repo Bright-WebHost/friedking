@@ -36,14 +36,6 @@ const cartKey = (slug: string) => `fk-cart-${slug}`
  * and hides the branch picker. Set to null when other branches go live to bring the picker back.
  */
 const ONLY_BRANCH: string | null = 'pandeshwar'
-const RECOMMENDED_ITEM_IDS = [
-  'd0000000-0000-0000-0000-000000000019', // King's Zinger Burger
-  'd0000000-0000-0000-0000-000000000023', // King's Double Decker Burger
-  'd0000000-0000-0000-0000-000000000041', // Single Strip
-  'd0000000-0000-0000-0000-000000000045', // French Fries - Medium
-  'd0000000-0000-0000-0000-000000000049', // Chick Pop - Medium
-  'd0000000-0000-0000-0000-000000000005', // Lunch Meal
-]
 
 /** "Fried King Pandeshwar" -> "Pandeshwar" (the brand is already on screen). */
 const shortName = (name?: string | null) => (name ?? '').replace(/^fried king\s*/i, '') || name || ''
@@ -299,13 +291,8 @@ export default function CustomerPage() {
   }, [items, categories, diet, query])
 
   const visibleCount = sections.reduce((s, x) => s + x.items.length, 0)
-  const recommendedItems = useMemo(() => {
-    const byId = new Map(items.map((item) => [item.id, item]))
-    return RECOMMENDED_ITEM_IDS.flatMap((id) => {
-      const item = byId.get(id)
-      return item ? [item] : []
-    })
-  }, [items])
+  // Recommended = the dishes staff pinned in Dashboard > Menu (📌), in menu order
+  const recommendedItems = useMemo(() => items.filter((item) => item.featured), [items])
   const drinkAddOns = useMemo(() => {
     const drinkCategoryIds = new Set(categories.filter((category) => category.name.trim().toLowerCase() === 'mojitos').map((category) => category.id))
     return items.filter((item) => drinkCategoryIds.has(item.categoryId))

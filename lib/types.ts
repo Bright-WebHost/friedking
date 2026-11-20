@@ -26,6 +26,8 @@ export interface MenuItem {
   imageUrl: string | null
   isVeg: boolean
   categoryId: string
+  /** Pinned in Dashboard > Menu: shown in the Recommended section of the customer menu */
+  featured?: boolean
 }
 
 export interface CartItem {

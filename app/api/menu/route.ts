@@ -45,10 +45,9 @@ export async function GET(req: NextRequest) {
       .order('sort_order', { ascending: true }),
     supabase
       .from('menu_items')
-      .select('id, name, description, price_paise, image_url, is_veg, category_id')
+      .select('id, name, description, price_paise, image_url, is_veg, category_id, featured')
       .eq('branch_id', b.id)
       .eq('is_active', true)
-      .order('featured', { ascending: false })
       .order('sort_order', { ascending: true }),
   ])
 
@@ -75,6 +74,7 @@ export async function GET(req: NextRequest) {
     imageUrl: i.image_url,
     isVeg: i.is_veg,
     categoryId: i.category_id,
+    featured: i.featured === true,
   }))
 
   // Hide categories that have no active items.
