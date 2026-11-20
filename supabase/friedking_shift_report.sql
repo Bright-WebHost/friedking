@@ -34,7 +34,7 @@ declare
   v_enabled boolean; v_time time; v_nums text[]; v_force boolean; v_last_at timestamptz; v_from timestamptz;
   r record; v_orders int; v_sales numeric; v_gst numeric; v_cancel_n int; v_cancel_v numeric; v_cash numeric; v_pending_cash numeric; v_disc numeric;
   v_open_new int; v_open_kitchen int;
-  v_by_type jsonb; v_by_src jsonb; v_top text; v_staff text; v_label text; v_period text; v_text text; v_split text; v_top1 text;
+  v_by_type jsonb; v_by_src jsonb; v_top text; v_staff text; v_label text; v_period text; v_text text; v_split text; v_dayhead text; v_tspan text; v_p_del text; v_p_tk text; v_p_din text; v_p_src text; v_top1 text;
   v_rec jsonb; v_token text; v_data jsonb; v_top10 jsonb; v_staffon jsonb;
 begin
   select * into b from branches where slug = p_branch;
@@ -61,7 +61,9 @@ begin
     return jsonb_build_object('send', false, 'reason', 'no numbers');
   end if;
 
-  v_last_at := nullif(v_set->>'shift_report_last_at', '')::timestamptz;
+  -- scheduled report: everything since the previous SCHEDULED report; "Send report now": everything since midnight today (IST)
+  v_last_at := nullif(v_set->>'shift_report_last_sched_at', '')::timestamptz;
+  if v_force then v_last_at := null; end if;
   v_from := greatest(coalesce(v_last_at, (v_today::timestamp at time zone 'Asia/Kolkata')), v_now - interval '48 hours');
 
   -- the numbers
@@ -117,18 +119,21 @@ begin
   insert into branch_settings (branch_id, key, value) values (b.id, 'shift_report_image', jsonb_build_object('token', v_token, 'data', v_data)::text)
     on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
 
-  v_text := E'📊 *Fried King - Shift report*\n' || b.name || E'\n' || v_period || E'\n\n' ||
-    '*Orders:* ' || v_orders || E'   *Sales:* ' || public.fk_rs(v_sales) || E'\n' ||
-    case when v_orders > 0 then 'Average order: ' || public.fk_rs(v_sales / v_orders) || ' · GST included: ' || public.fk_rs(v_gst) || E'\n' else '' end ||
-    E'\n🛵 Delivery: ' || coalesce(v_by_type->'delivery'->>'n', '0') || ' · ' || public.fk_rs((v_by_type->'delivery'->>'paise')::numeric) ||
-    E'\n🛍 Takeaway: ' || coalesce(v_by_type->'pickup'->>'n', '0') || ' · ' || public.fk_rs((v_by_type->'pickup'->>'paise')::numeric) ||
-    E'\n🍽 Dine-in: ' || coalesce(v_by_type->'dine-in'->>'n', '0') || ' · ' || public.fk_rs((v_by_type->'dine-in'->>'paise')::numeric) ||
-    E'\n\nFrom: WhatsApp ' || coalesce(v_by_src->>'whatsapp', '0') || ' · Website ' || coalesce(v_by_src->>'web', '0') || ' · POS ' || coalesce(v_by_src->>'pos', '0') ||
-    E'\n\n💵 Cash collected: ' || public.fk_rs(v_cash) || E'\nStill to collect: ' || public.fk_rs(v_pending_cash) ||
-    E'\n❌ Cancelled: ' || v_cancel_n || case when v_cancel_n > 0 then ' (' || public.fk_rs(v_cancel_v) || ')' else '' end ||
-    case when v_disc > 0 then E'\n🎁 Discounts and points: ' || public.fk_rs(v_disc) else '' end ||
-    case when v_top is not null then E'\n\n⭐ Top items: ' || v_top else '' end ||
-    case when v_staff is not null then E'\n👤 By staff (POS): ' || v_staff else '' end ||
+  -- message text (also the picture caption and the template values); the picture carries top items / staff / extras
+  v_dayhead := to_char(v_now at time zone 'Asia/Kolkata', 'DD Mon') || ' ' || upper(trim(to_char(v_now at time zone 'Asia/Kolkata', 'Day')));
+  v_tspan := case when (v_from at time zone 'Asia/Kolkata')::date = (v_now at time zone 'Asia/Kolkata')::date
+                  then to_char(v_from at time zone 'Asia/Kolkata', 'HH12:MI AM') else to_char(v_from at time zone 'Asia/Kolkata', 'DD Mon HH12:MI AM') end
+              || ' to ' || to_char(v_now at time zone 'Asia/Kolkata', 'DD Mon HH12:MI AM');
+  v_p_del := coalesce(v_by_type->'delivery'->>'n', '0') || ' · ' || public.fk_rs(coalesce((v_by_type->'delivery'->>'paise')::numeric, 0));
+  v_p_tk := coalesce(v_by_type->'pickup'->>'n', '0') || ' · ' || public.fk_rs(coalesce((v_by_type->'pickup'->>'paise')::numeric, 0));
+  v_p_din := coalesce(v_by_type->'dine-in'->>'n', '0') || ' · ' || public.fk_rs(coalesce((v_by_type->'dine-in'->>'paise')::numeric, 0));
+  v_p_src := 'WhatsApp ' || coalesce(v_by_src->>'whatsapp', '0') || ' · Website ' || coalesce(v_by_src->>'web', '0') || ' · POS ' || coalesce(v_by_src->>'pos', '0');
+  v_text := E'📊 *Fried King - Shift report*\n*' || b.name || E'*\n\n*' || v_dayhead || '* ' || v_tspan || E'\n\n' ||
+    '*Orders:* *' || v_orders || E'*   *Sales:* *' || public.fk_rs(v_sales) || E'*\n\n' ||
+    E'🛵 Delivery: ' || v_p_del || E'\n🛍 Takeaway: ' || v_p_tk || E'\n🍽 Dine-in: ' || v_p_din ||
+    E'\n\nFrom: ' || v_p_src ||
+    E'\n\nCash collected: *' || public.fk_rs(v_cash) || E'*\nYet to collect: ' || public.fk_rs(v_pending_cash) ||
+    E'\nCancelled: ' || v_cancel_n ||
     case when v_open_new + v_open_kitchen > 0 then E'\n\n⚠ Still open now: ' || v_open_new || ' waiting to be accepted, ' || v_open_kitchen || ' in the kitchen' else '' end;
 
   -- recipients, and whether each is inside the free 24-hour reply window
@@ -140,6 +145,8 @@ begin
   insert into branch_settings (branch_id, key, value) values (b.id, 'shift_report_last_at', v_now::text)
     on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
   if not v_force then
+    insert into branch_settings (branch_id, key, value) values (b.id, 'shift_report_last_sched_at', v_now::text)
+      on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
     insert into branch_settings (branch_id, key, value) values (b.id, 'shift_report_last_day', v_today::text)
       on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
   end if;
@@ -148,8 +155,10 @@ begin
     on conflict (branch_id, key) do update set value = excluded.value, updated_at = now();
 
   return jsonb_build_object('send', true, 'forced', v_force, 'recipients', v_rec, 'text', v_text, 'image_token', v_token,
-    'caption', E'📊 Fried King shift closing report - ' || v_label || E'\nOrders: ' || v_orders || ' · Sales: ' || public.fk_rs(v_sales),
-    'template', jsonb_build_object('name', 'friedking_shift_report', 'params', jsonb_build_array(v_label, v_orders::text, public.fk_rs(v_sales))),
+    'caption', v_text,
+    'template', jsonb_build_object('name', 'friedking_shift_report_v2', 'params', jsonb_build_array(
+      b.name, v_dayhead, v_tspan, v_orders::text, public.fk_rs(v_sales), v_p_del, v_p_tk, v_p_din, v_p_src,
+      public.fk_rs(v_cash), public.fk_rs(v_pending_cash), v_cancel_n::text)),
     'report', jsonb_build_object('from', v_from, 'to', v_now, 'orders', v_orders, 'sales_paise', v_sales, 'cancelled', v_cancel_n, 'cash_paise', v_cash));
 end $$;
 

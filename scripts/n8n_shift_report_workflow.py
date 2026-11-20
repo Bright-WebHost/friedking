@@ -41,7 +41,7 @@ BUILD_MESSAGES_JS = '''// One message per number. The report is an IMAGE drawn b
 // an image message with a caption inside the 24-hour window, the approved template with an image header outside it.
 var r = $input.first().json;
 var url = 'https://friedking.vercel.app/api/shift-report?t=' + String(r.image_token || '');
-var tpl = r.template || { name: 'friedking_shift_report', params: [] };
+var tpl = r.template || { name: 'friedking_shift_report_v2', params: [] };
 return (r.recipients || []).map(function (x) {
   var outgoing = x.in_window
     ? { type: 'image', image: { link: url, caption: String(r.caption || 'Fried King shift closing report') } }

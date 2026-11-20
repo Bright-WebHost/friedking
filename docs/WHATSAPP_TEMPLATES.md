@@ -129,22 +129,44 @@ Tap below to order your favourites in a few clicks!
 
 ---
 
-## 6. `friedking_shift_report` (daily shift closing report: a receipt-style image, same as Analytics > Shift Close Report)
+## 6. `friedking_shift_report_v2` (daily shift closing report: a receipt-style image, same as Analytics > Shift Close Report)
 
 The report is an IMAGE drawn by the app (`/api/shift-report`). A number that messaged us in the last 24 hours gets it as a normal
 image message; everyone else needs this approved template with an image header (staff numbers rarely message the bot first).
 
 | Field | Value |
 |---|---|
-| Name | `friedking_shift_report` |
+| Name | `friedking_shift_report_v2` |
 | Category | **Utility** |
 | Language | English (`en`) |
-| Variable type | **Number** ({{1}}, {{2}}, {{3}}) |
+| Variable type | **Number** ({{1}} to {{12}}) |
 | Header | **Media > Image** (upload any sample picture, for example a receipt screenshot; the real report image is attached on every send) |
-| Body | `Fried King shift closing report for {{1}}. Orders: {{2}}. Sales: {{3}}. The full report is in the picture above.` |
+| Body | see below (keep the line breaks and the *stars*) |
 | Buttons / footer | none |
 
-Sample values for review: `{{1}}` = 20 Nov 2026, `{{2}}` = 24, `{{3}}` = Rs 18,450
+```
+📊 *Fried King - Shift report*
+*{{1}}*
+
+*{{2}}* {{3}}
+
+*Orders:* *{{4}}*   *Sales:* *{{5}}*
+
+🛵 Delivery: {{6}}
+🛍 Takeaway: {{7}}
+🍽 Dine-in: {{8}}
+
+From: {{9}}
+
+Cash collected: *{{10}}*
+Yet to collect: {{11}}
+Cancelled: {{12}}
+
+The full report is in the picture above.
+```
+
+Sample values for review: 1 = Fried King Pandeshwar, 2 = 20 Nov FRIDAY, 3 = 02:08 PM to 20 Nov 02:09 PM, 4 = 24, 5 = Rs 18,450,
+6 = 10 · Rs 9,000, 7 = 6 · Rs 3,450, 8 = 8 · Rs 6,000, 9 = WhatsApp 12 · Website 6 · POS 6, 10 = Rs 15,000, 11 = Rs 3,450, 12 = 1
 
 Set in Dashboard > Settings > Shift closing report (switch, time in IST, numbers). n8n workflow: `Fried King | Shift Report` (every minute).
 Database: `supabase/friedking_shift_report.sql`.
