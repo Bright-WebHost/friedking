@@ -6,8 +6,7 @@
 -- Edit the list in BOTH files if you want to include more numbers (always the +91 form).
 -- ============================================================
 with test_phones(phone) as (
-  values ('+919035960307')                    -- Maithri (your test number)
-         -- , ('+917795240605')               -- Shahil (uncomment if his chats are test data)
+  values ('+919035960307'), ('+917795240605'), ('+919180108354')   -- Maithri, Shahil, Moideen (all test)
 ),
 cust as (select id, phone from customers where phone in (select phone from test_phones)),
 ords as (select id, order_number, status from orders where customer_id in (select id from cust)),

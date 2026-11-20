@@ -18,7 +18,8 @@ do $$
 declare
   v_phones  text[]  := array[
     '+919035960307'                  -- Maithri (your test number)
-    -- , '+917795240605'             -- Shahil (uncomment if his chats are test data)
+    , '+917795240605'                -- Shahil (test)
+    , '+919180108354'                -- Moideen (test)
   ];
   v_restart boolean := true;         -- RESTART NUMBERING: true = start again after the last kept order, false = keep counting
   v_cust    uuid[];

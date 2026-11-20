@@ -48,6 +48,7 @@ export async function GET(req: NextRequest) {
       .select('id, name, description, price_paise, image_url, is_veg, category_id')
       .eq('branch_id', b.id)
       .eq('is_active', true)
+      .order('featured', { ascending: false })
       .order('sort_order', { ascending: true }),
   ])
 
