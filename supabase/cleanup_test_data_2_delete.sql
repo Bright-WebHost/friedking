@@ -90,8 +90,9 @@ begin
 
   -- 3) order counter: restart after the highest order that is kept (FK-1001 if nothing is kept)
   if v_restart then
-    perform setval(pg_get_serial_sequence('public.orders', 'order_number'),
-                   greatest(1000, coalesce((select max(order_number) from public.orders), 1000)), true);
+    -- numbers are per branch now (friedking_branch_order_numbers.sql): reset each branch's counter
+    update public.branch_order_counters c
+    set last_number = greatest(1000, coalesce((select max(o.order_number) from public.orders o where o.branch_id = c.branch_id), 1000));
   end if;
 end $$;
 

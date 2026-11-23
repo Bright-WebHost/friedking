@@ -10,7 +10,7 @@ export interface Account {
   phoneMasked?: string
   name?: string
   addresses?: Array<{ id: string; label: string | null; address: string }>
-  orders?: Array<{ order_number: number; status: string; total_paise: number; created_at: string; order_type: string; order_items: Array<{ name_snapshot: string; quantity: number }> }>
+  orders?: Array<{ id: string; branches?: { name: string } | null; order_number: number; status: string; total_paise: number; created_at: string; order_type: string; order_items: Array<{ name_snapshot: string; quantity: number }> }>
 }
 
 const when = (t: string) => new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })
@@ -77,9 +77,9 @@ export default function AccountPanel({ account, onClose, onChanged }: { account:
                 <h3 className="mb-2 text-sm font-extrabold uppercase tracking-wide">My orders</h3>
                 <div className="space-y-2">
                   {(account.orders ?? []).map((o) => (
-                    <div key={o.order_number} className="rounded-xl border border-fk-line px-3 py-2.5">
+                    <div key={o.id} className="rounded-xl border border-fk-line px-3 py-2.5">
                       <div className="flex items-center justify-between text-sm">
-                        <b>FK-{o.order_number}</b>
+                        <b>FK-{o.order_number}{o.branches?.name ? <span className="font-semibold text-fk-muted"> · {o.branches.name.replace(/^fried king\s*/i, '')}</span> : null}</b>
                         <span className="rounded-full bg-fk-bg px-2 py-0.5 text-xs font-semibold capitalize">{o.status === 'pending' ? 'placed' : o.status}</span>
                       </div>
                       <p className="mt-1 text-sm text-fk-muted">{o.order_items.map((i) => `${i.quantity} x ${i.name_snapshot}`).join(', ')}</p>

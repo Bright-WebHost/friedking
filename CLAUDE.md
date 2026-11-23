@@ -64,7 +64,7 @@ Column names that are easy to get wrong:
 - `menu_items`: `name`, `price_paise`, `is_veg`, `is_active`, `sort_order`, `image_url`, `category_id`, `branch_id`
 - `menu_categories`: `name`, `sort_order`, `is_active`
 - `branches`: `name`, `slug`, `is_active`, `opens_at`, `closes_at`
-- `orders`: `subtotal_paise`, `gst_paise`, `total_paise`, `status` (enum: pending, confirmed, preparing, ready, delivered, cancelled), `order_number` (starts at 1001), `order_type` (pickup or delivery), `payment_method` (cash or upi), `delivery_address`, `idempotency_key` (unique)
+- `orders`: `subtotal_paise`, `gst_paise`, `total_paise`, `status` (enum: pending, confirmed, preparing, ready, delivered, cancelled), `order_number` (per branch, each branch counts from 1001 via `branch_order_counters` + trigger `fk_assign_order_number`; unique on `(branch_id, order_number)`, so ALWAYS look an order up with its branch), `order_type` (pickup or delivery), `payment_method` (cash or upi), `delivery_address`, `idempotency_key` (unique)
 - `order_items`: `menu_item_id`, `name_snapshot`, `unit_price_paise`, `quantity`, `line_total_paise`
 - `order_events`: outbox for n8n. `status` enum pending/claimed/done/failed, `event_type`, `payload` jsonb
 - `customers` is unique on `(branch_id, phone)`

@@ -17,7 +17,7 @@ export async function GET() {
     ])
     const ids = (custs ?? []).map((c) => c.id)
     const { data: orders } = ids.length
-      ? await db.from('orders').select('order_number, status, total_paise, created_at, order_type, order_items(name_snapshot, quantity)')
+      ? await db.from('orders').select('id, order_number, status, total_paise, created_at, order_type, branches(name), order_items(name_snapshot, quantity)')
           .in('customer_id', ids).neq('status', 'draft').order('created_at', { ascending: false }).limit(20)
       : { data: [] }
     return NextResponse.json({

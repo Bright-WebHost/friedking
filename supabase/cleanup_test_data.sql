@@ -49,7 +49,8 @@ truncate table public.expenses cascade;
 truncate table public.customers cascade;
 
 -- 4. Reset Order Number sequence to 1001 (First real order will be FK-1001)
-alter table public.orders alter column order_number restart with 1001;
+-- (numbers are per branch now: clear the per-branch counters instead of restarting a shared sequence)
+delete from public.branch_order_counters;
 
 commit;
 
