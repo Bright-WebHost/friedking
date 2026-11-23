@@ -32,10 +32,20 @@ type Promotion = {
 const cartKey = (slug: string) => `fk-cart-${slug}`
 
 /**
- * The site currently serves only the Pandeshwar franchise: it opens straight into this branch's menu
- * and hides the branch picker. Set to null when other branches go live to bring the picker back.
+ * Which branch the URL points at: /falnir (path) or ?branch=falnir (older links).
+ * Links with no branch that predate multi-branch (WhatsApp link tokens, ?ph=, table QR codes) belong to
+ * Pandeshwar; a plain visit to the site shows the branch picker instead.
  */
-const ONLY_BRANCH: string | null = 'pandeshwar'
+const LEGACY_BRANCH = 'pandeshwar'
+function branchFromUrl(): string | null {
+  const params = new URLSearchParams(window.location.search)
+  const fromQuery = params.get('branch')?.trim().toLowerCase()
+  if (fromQuery) return fromQuery
+  const fromPath = window.location.pathname.split('/').filter(Boolean)[0]?.trim().toLowerCase()
+  if (fromPath && /^[a-z0-9-]+$/.test(fromPath)) return fromPath
+  if (params.has('t') || params.has('ph') || params.has('phone') || params.has('table')) return LEGACY_BRANCH
+  return null
+}
 
 /** "Fried King Pandeshwar" -> "Pandeshwar" (the brand is already on screen). */
 const shortName = (name?: string | null) => (name ?? '').replace(/^fried king\s*/i, '') || name || ''
@@ -173,6 +183,7 @@ export default function CustomerPage() {
 
   // ── First load: read ?branch= and ?phone= (the WhatsApp bot link carries both) ──
   useEffect(() => {
+    const slug = branchFromUrl() // read before the link token is stripped from the URL below
     const params = new URLSearchParams(window.location.search)
     // The n8n WhatsApp buttons send the number as ?ph=; older links use ?phone=.
     const p = normalizePhone(params.get('phone') ?? params.get('ph') ?? '')
@@ -197,7 +208,6 @@ export default function CustomerPage() {
     }
     const tp = Number(params.get('table'))
     if (Number.isInteger(tp) && tp > 0 && tp < 1000) { setTableNo(tp); setOrderType('dine-in'); setOrderChosen(true) }
-    const slug = ONLY_BRANCH ?? params.get('branch')?.trim().toLowerCase()
     if (slug) loadMenu(slug)
     else loadBranches()
     setReady(true)
@@ -305,7 +315,7 @@ export default function CustomerPage() {
   }
 
   const changeBranch = () => {
-    window.history.replaceState(null, '', window.location.pathname)
+    window.history.replaceState(null, '', '/')
     setBranch(null); setItems([]); setCategories([]); setCart([])
     setScreen('branches')
     if (!branches) loadBranches()
@@ -416,7 +426,7 @@ export default function CustomerPage() {
                 <button
                   key={b.id}
                   onClick={() => {
-                    window.history.replaceState(null, '', `?branch=${b.slug}`)
+                    window.history.replaceState(null, '', `/${b.slug}`)
                     loadMenu(b.slug)
                   }}
                   className="group flex w-full items-center gap-4 rounded-2xl border border-fk-line bg-white p-4 text-left transition hover:border-fk-red hover:shadow-md"
@@ -717,7 +727,7 @@ export default function CustomerPage() {
       <div className="relative mx-auto min-h-dvh max-w-[768px] bg-white pb-28 shadow-sm">
         {/* Search header */}
         <header className="sticky top-0 z-40 flex h-16 items-center gap-2 bg-white px-3 shadow-[0_2px_10px_rgba(0,0,0,0.04)]">
-          {!ONLY_BRANCH && (
+          {tableNo === null && (
             <button onClick={changeBranch} aria-label="Change branch" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full active:bg-fk-bg">
               <ChevronLeft className="h-6 w-6" strokeWidth={2.5} />
             </button>
@@ -771,7 +781,7 @@ export default function CustomerPage() {
                   {orderType === 'delivery' ? <Bike className="h-3.5 w-3.5" /> : <Store className="h-3.5 w-3.5" />} {orderType === 'delivery' ? 'Delivery' : 'Takeaway'} · Change
                 </button>
               )}
-              {!ONLY_BRANCH && (
+              {tableNo === null && (
                 <button onClick={changeBranch} className="mt-1.5 text-[13px] font-semibold text-fk-yellow underline-offset-2 hover:underline">
                   Change branch
                 </button>
@@ -842,7 +852,7 @@ export default function CustomerPage() {
             <ErrorBox
               message={loadError}
               onRetry={() => {
-                const slug = ONLY_BRANCH ?? new URLSearchParams(window.location.search).get('branch')
+                const slug = branchFromUrl()
                 if (slug) loadMenu(slug)
                 else { setScreen('branches'); loadBranches() }
               }}

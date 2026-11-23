@@ -1,0 +1,683 @@
+{
+  "name": "Fried King | Status Notifier",
+  "nodes": [
+    {
+      "id": "af907832-02a2-49df-9160-6008a0acf229",
+      "name": "Status Webhook",
+      "webhookId": "54d16b8f-9ccf-4c0e-b094-e7b01e102338",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2192,
+        -96
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-status",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "6bbfc33c-5a5e-46bf-a422-75bed133a0ac",
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1968,
+        -96
+      ],
+      "parameters": {
+        "jsCode": "\nvar hook = $('Status Webhook').first().json;\nvar d = hook.body || hook;\nvar who = ($('Verify Staff').first().json || {}).body || {};\nvar allowed = ['new','confirmed','preparing','ready_for_pickup','out_for_delivery','delivered','completed','cancelled','declined'];\nvar status = String(d.status || '').trim();\nvar orderNum = String(d.order_number || '').trim();\nif (orderNum === '' || allowed.indexOf(status) === -1) {\n  return [{ json: { error: true, reason: 'Invalid order_number or status' } }];\n}\nvar prep = parseInt(d.prep_minutes, 10);\nif (isNaN(prep) || prep <= 0) { prep = 0; }\nreturn [{ json: { order_number: orderNum, status: status, prep_minutes: prep,\n                  reason: String(d.reason || d.declined_reason || ''),\n                  staff: String(d.agent_name || d.accepted_by || who.email || 'staff'),\n                  silent: d.silent === true, error: false } }];\n"
+      }
+    },
+    {
+      "id": "0eb4f0f8-9d0b-46a6-8506-ef1ab0f8c939",
+      "name": "Valid Status?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1744,
+        -96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5aeea24f-8e27-4892-8c63-78bd0553bc72",
+      "name": "Update Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        -1520,
+        -160
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify($json.status === \"cancelled\" ? { status: $json.status, cancelled_by: \"staff:\" + $json.staff, cancelled_at: new Date().toISOString() } : { status: $json.status }) }}",
+        "method": "PATCH",
+        "options": {
+          "timeout": 10000
+        },
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "=eq.{{ $json.order_number }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "sendHeaders": true,
+        "sendQuery": true,
+        "specifyBody": "json",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/orders"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "60120d37-ab42-47f4-966b-1178e714fab4",
+      "name": "Build Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1312,
+        -160
+      ],
+      "parameters": {
+        "jsCode": "var rows = $('Update Status').first().json;\nvar order = Array.isArray(rows) ? (rows[0] || null) : rows;\nif (order && typeof order === 'object' && Object.keys(order).length === 0) { order = null; }\nif (!order || !order.customer_phone) { return [{ json: { skip: true } }]; }\n\nvar ex = $('Extract Data').first().json;\nvar name = order.customer_name ? (' ' + String(order.customer_name).split(' ')[0]) : '';\nvar firstName = order.customer_name ? String(order.customer_name).split(' ')[0] : 'Guest';\nvar num = order.order_number || '';\nvar status = ex.status;\nvar prep = ex.prep_minutes || order.prep_minutes || 0;\nvar eta = prep ? ('\\n\\nReady in about ' + prep + ' minutes.') : '';\nvar dine = order.order_type === 'dine-in';\nvar reason = ex.reason || order.declined_reason || '';\nvar amt = Number(order.total || 0);\n\n// Free-form messages only reach someone who messaged us in the last 24h\n// (WhatsApp platform rule) - outside that window an approved Utility\n// template is the only way it can reach them, for ANY status, not just\n// the initial confirmation.\nvar recentRows = [];\ntry {\n  var chk = $('Check Recent Inbound').first().json;\n  var body = (chk && chk.body !== undefined) ? chk.body : chk;\n  recentRows = Array.isArray(body) ? body : (body ? [body] : []);\n} catch (e) { recentRows = []; }\nvar hasRecentInbound = recentRows.some(function (r) { return r && r.id; });\n\nif (status === 'confirmed' || status === 'preparing') {\n  var imgUrl = 'https://staff.brightmedia.tech/webhook/friedking-receipt?order_number=' + encodeURIComponent(num) + '&key=fk_bWzKMd0MI4U3WEUCAGYlQxcb';\n  var caption = 'Your order ' + num + ' is confirmed!' + eta;\n\n  var outgoing;\n  if (hasRecentInbound) {\n    outgoing = { type: 'image', image: { link: imgUrl, caption: caption } };\n  } else {\n    outgoing = { type: 'template', template: { name: 'friedking_order_confirmed', language: { code: 'en' },\n      components: [\n        { type: 'header', parameters: [ { type: 'image', image: { link: imgUrl } } ] },\n        { type: 'body', parameters: [\n            { type: 'text', text: firstName },\n            { type: 'text', text: num },\n            { type: 'text', text: String(amt) }\n        ] }\n      ] } };\n  }\n  return [{ json: { skip: false, phone: String(order.customer_phone), order_number: num, status: status, via_template: !hasRecentInbound, outgoing: outgoing } }];\n}\n\nif (status === 'out_for_delivery') {\n  var outgoing2;\n  if (hasRecentInbound) {\n    outgoing2 = { type: 'text', text: { body: 'Good news' + name + '! Your order *' + num + '* is on its way.\\nPlease keep Rs ' + amt + ' ready in cash for the rider.' } };\n  } else {\n    outgoing2 = { type: 'template', template: { name: 'friedking_order_out_for_delivery', language: { code: 'en' },\n      components: [ { type: 'body', parameters: [\n          { type: 'text', text: firstName },\n          { type: 'text', text: num },\n          { type: 'text', text: String(amt) }\n      ] } ] } };\n  }\n  return [{ json: { skip: false, phone: String(order.customer_phone), order_number: num, status: status, via_template: !hasRecentInbound, outgoing: outgoing2 } }];\n}\n\nif (status === 'ready_for_pickup') {\n  var detail = dine\n    ? ('It is on its way to your table (Table ' + (order.table_number || '') + ').')\n    : 'Please collect it from Arista Enclave, Ground Floor, 2nd Main Rd, Pandeshwar, Mangaluru, Karnataka 575001.';\n  var outgoing3;\n  if (hasRecentInbound) {\n    outgoing3 = { type: 'text', text: { body: dine\n      ? ('Your order *' + num + '* is ready and coming to table ' + (order.table_number || '') + '.')\n      : ('Hi' + name + ', your order *' + num + '* is ready for pickup at Arista Enclave, Ground Floor, 2nd Main Rd, Pandeshwar, Mangaluru, Karnataka 575001.') } };\n  } else {\n    outgoing3 = { type: 'template', template: { name: 'friedking_order_ready', language: { code: 'en' },\n      components: [ { type: 'body', parameters: [\n          { type: 'text', text: num },\n          { type: 'text', text: detail }\n      ] } ] } };\n  }\n  return [{ json: { skip: false, phone: String(order.customer_phone), order_number: num, status: status, via_template: !hasRecentInbound, outgoing: outgoing3 } }];\n}\n\nif (status === 'declined' || status === 'cancelled') {\n  var situation = status === 'declined'\n    ? ('we were unable to take this order right now' + (reason ? (' (Reason: ' + reason + ')') : '') + '.')\n    : 'this order has been cancelled by the restaurant.';\n  var outgoing4;\n  if (hasRecentInbound) {\n    outgoing4 = { type: 'text', text: { body: status === 'declined'\n      ? ('Hi' + name + ', we are sorry — we could not take order *' + num + '* right now.' +\n          (reason ? ('\\nReason: ' + reason) : '') +\n          '\\n\\nPlease call +91 97421 75222 and we will sort it out for you.')\n      : ('Hi' + name + ', your order *' + num + '* has been cancelled by the restaurant.\\nPlease call +91 97421 75222 if this is unexpected.') } };\n  } else {\n    outgoing4 = { type: 'template', template: { name: 'friedking_order_update', language: { code: 'en' },\n      components: [ { type: 'body', parameters: [\n          { type: 'text', text: num },\n          { type: 'text', text: situation }\n      ] } ] } };\n  }\n  return [{ json: { skip: false, phone: String(order.customer_phone), order_number: num, status: status, via_template: !hasRecentInbound, outgoing: outgoing4 } }];\n}\n\n// 'delivered' intentionally has no message here - the post-delivery rating\n// ask was dropped (cost with no captured value, nothing read the replies).\n// Loyalty earning for this status is handled by a database trigger\n// (trg_loyalty_on_order_status), not from this workflow.\nreturn [{ json: { skip: true } }];"
+      }
+    },
+    {
+      "id": "0a1de0ee-129f-4e88-a145-e4169289fda4",
+      "name": "Should Notify?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1088,
+        -160
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{ $('Extract Data').first().json.silent }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "25dbae15-0ae3-4c65-bd0e-5f94266951a4",
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        -864,
+        -256
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ from: \"+919742175222\", to: \"+\" + String($json.phone).replace(/[^0-9]/g, \"\") }, $json.outgoing)) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sHKICxwNID36i9F",
+          "name": "Fried King | YCloud API Key"
+        }
+      }
+    },
+    {
+      "id": "5052da36-c89d-4bf8-82f1-66f819300f83",
+      "name": "Log Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        -640,
+        -256
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $('Build Message').first().json.phone, direction: \"outbound\", sender: \"system\", message_type: \"text\", content: (() => { var b = $('Build Message').first().json; var o = b.outgoing; if (o.type === 'image') return '[receipt image] ' + (o.image.caption || ''); if (o.type === 'template') return '[order confirmed template] ' + (b.order_number || ''); return (o.text && o.text.body) || ''; })() }) }}",
+        "options": {
+          "timeout": 10000
+        },
+        "parameters": null
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "219950c2-a6fe-472b-9153-4e70d3264888",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        -160
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, order_number: $('Extract Data').first().json.order_number, status: $('Extract Data').first().json.status }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "1ae26639-2263-45b4-a87e-39bf8ef580e8",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1520,
+        64
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        },
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.reason }) }}"
+      }
+    },
+    {
+      "id": "83097682-bc58-4984-8df4-6516f1e76ce6",
+      "name": "Verify Staff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        -2192,
+        160
+      ],
+      "parameters": {
+        "authentication": "none",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "FK_SUPABASE_PUBLISHABLE_KEY_PENDING"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $json.headers.authorization || 'Bearer none' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/rpc/staff_check"
+      }
+    },
+    {
+      "id": "aa2bb90c-084f-4486-8156-4e43f913a045",
+      "name": "Is Staff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1968,
+        160
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "6bbe75a9-0b8a-4491-add8-566fde5464ce",
+              "leftValue": "={{ $json.statusCode === 200 && !!$json.body && $json.body.staff === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dd4b5168-81ef-427d-876e-100c0d246d44",
+      "name": "Respond Unauthorised",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -1744,
+        320
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 401,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        },
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: \"Not authorised. Please log in to the dashboard again.\" }) }}"
+      }
+    },
+    {
+      "id": "e78018b6-12c2-499e-94b3-f8edc06783df",
+      "name": "Record Order Notify Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        -864,
+        -64
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/orders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "=eq.{{ $('Extract Data').first().json.order_number }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ order_notify_status: ($json.id && $json.id) ? 'sent' : 'failed', order_wa_message_id: ($json.id && $json.id && $json.id) || null }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "c8dd7862-2719-4e01-9863-3f03308e31b7",
+      "name": "Check Recent Inbound",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        -1420,
+        -320
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "=eq.{{ (() => { var u = $('Update Status').first().json; var r = Array.isArray(u) ? (u[0]||{}) : (u||{}); return r.customer_phone || ''; })() }}"
+            },
+            {
+              "name": "direction",
+              "value": "=eq.inbound"
+            },
+            {
+              "name": "created_at",
+              "value": "=gte.{{ new Date(Date.now() - 24*60*60*1000).toISOString() }}"
+            },
+            {
+              "name": "select",
+              "value": "id"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Valid Status?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Status?": {
+      "main": [
+        [
+          {
+            "node": "Update Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Message": {
+      "main": [
+        [
+          {
+            "node": "Should Notify?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Notify?": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Log Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Record Order Notify Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Notification": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Staff?": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unauthorised",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Status Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Staff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Staff": {
+      "main": [
+        [
+          {
+            "node": "Is Staff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Recent Inbound": {
+      "main": [
+        [
+          {
+            "node": "Build Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Status": {
+      "main": [
+        [
+          {
+            "node": "Check Recent Inbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}

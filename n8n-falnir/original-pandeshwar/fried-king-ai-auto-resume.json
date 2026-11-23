@@ -1,0 +1,154 @@
+{
+  "name": "Fried King | AI Auto-Resume",
+  "nodes": [
+    {
+      "id": "7af533ac-fb60-4f67-a4ef-ab7ef8770a4e",
+      "name": "Every 2 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        320,
+        -80
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f5f4c5ad-f0e1-4ba6-af13-31c798cccfaa",
+      "name": "Compute Cutoff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "\n// Hand control back to the AI after 5 minutes of staff silence.\nvar IDLE_MINUTES = 5;\nvar cutoff = new Date(Date.now() - (IDLE_MINUTES * 60 * 1000)).toISOString();\nreturn [{ json: { cutoff: cutoff } }];\n"
+      }
+    },
+    {
+      "id": "1c06fefd-0a52-4a20-bcd0-9d2b7eb71c7c",
+      "name": "Bulk Resume",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        768,
+        -80
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/chat_sessions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "ai_enabled",
+              "value": "=eq.false"
+            },
+            {
+              "name": "last_human_activity_at",
+              "value": "=lt.{{ $json.cutoff }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ ai_enabled: true, ai_disabled_at: null, ai_disabled_by: \"\" }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "b88bae6e-3db7-4998-a447-44b9a2cb7661",
+      "name": "Log Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -80
+      ],
+      "parameters": {
+        "jsCode": "\nvar resp = $input.first().json;\nvar body = resp.body !== undefined ? resp.body : resp;\nvar rows = Array.isArray(body) ? body : [];\nreturn [{ json: {\n  resumed_count: rows.length,\n  resumed_phones: rows.map(function (r) { return r.phone; }),\n  checked_at: new Date().toISOString(),\n  status_code: resp.statusCode || 0\n} }];\n"
+      }
+    }
+  ],
+  "connections": {
+    "Every 2 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Compute Cutoff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Cutoff": {
+      "main": [
+        [
+          {
+            "node": "Bulk Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bulk Resume": {
+      "main": [
+        [
+          {
+            "node": "Log Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}

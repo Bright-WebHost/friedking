@@ -1,0 +1,227 @@
+{
+  "name": "Fried King | Payment Verify",
+  "nodes": [
+    {
+      "id": "ee48d16b-ca28-4be3-af28-d74006669c8f",
+      "name": "Payment Verify Webhook",
+      "webhookId": "0adcb154-c8cf-40cb-9b40-03d9b028eb3a",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        96
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-payment-verify",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "f0847e8e-fe2d-41e4-8e9f-309cabce89b6",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ (function(){ var r = $json; var b = (r && r.body !== undefined) ? r.body : r; return JSON.stringify({ success: !!(b && b.ok), transitioned: !!(b && b.transitioned), reason: b && b.reason }); })() }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "6f2070df-c14e-4be3-aa48-89c2a142bdf5",
+      "name": "Just Transitioned?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ (function(){ var r=$json; var b=(r&&r.body!==undefined)?r.body:r; return !!(b&&b.transitioned); })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "8dd2784a-425d-4415-ba93-40a76cd15446",
+      "name": "Build Confirmation Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "var r = $('Verify & Mark Paid').first().json;\nvar b = (r && r.body !== undefined) ? r.body : r;\nvar phone = b.customer_phone || '';\nvar total = b.total != null ? b.total : '';\nvar text = '✅ Payment received — ₹' + total + '. Thanks! We’ll start preparing your order shortly.';\nreturn [{ json: { phone: phone, text: text } }];"
+      }
+    },
+    {
+      "id": "3fe800d8-9116-4dbb-9f2a-4249089c5288",
+      "name": "Send Payment Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: \"+919742175222\", to: \"+\" + String($json.phone).replace(/[^0-9]/g, \"\"), type: 'text', text: { body: $json.text } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sHKICxwNID36i9F",
+          "name": "Fried King | YCloud API Key"
+        }
+      }
+    },
+    {
+      "id": "2b8f5fe1-808b-4249-90ef-5b920c0a9866",
+      "name": "Verify & Mark Paid",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        96
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/rpc/verify_razorpay_handler_payment",
+        "authentication": "none",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "FK_SUPABASE_PUBLISHABLE_KEY_PENDING"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (function(){ var b = $('Payment Verify Webhook').first().json.body || {}; return JSON.stringify({ p_order_number: b.order_number, p_razorpay_order_id: b.razorpay_order_id, p_razorpay_payment_id: b.razorpay_payment_id, p_razorpay_signature: b.razorpay_signature }); })() }}",
+        "options": {
+          "timeout": 10000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Just Transitioned?": {
+      "main": [
+        [
+          {
+            "node": "Build Confirmation Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Confirmation Message": {
+      "main": [
+        [
+          {
+            "node": "Send Payment Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Payment Verify Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify & Mark Paid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify & Mark Paid": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Just Transitioned?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}

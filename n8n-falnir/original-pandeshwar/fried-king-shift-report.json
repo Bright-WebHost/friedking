@@ -1,0 +1,279 @@
+{
+  "name": "Fried King | Shift Report",
+  "nodes": [
+    {
+      "id": "ce1aa237-8b9a-4664-bb7b-92a73b3879a2",
+      "name": "Every Minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "59a2ce53-a61f-4368-a651-edbb9f566c5c",
+      "name": "Claim Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "url": "https://alhnmwwbdydcgcgnwhqw.supabase.co/rest/v1/rpc/claim_shift_report",
+        "jsonBody": "={{ JSON.stringify({ p_branch: \"pandeshwar\" }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "rB93QINuNPfEbMaT",
+          "name": "Fried King | Supabase (service role)"
+        }
+      }
+    },
+    {
+      "id": "623ba848-645d-4e25-b51f-f23491365be0",
+      "name": "Send?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "s1",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aabfac77-ec5a-4054-af55-fad6093401c1",
+      "name": "Build Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// One message per number. The report is an IMAGE drawn by the app (same figures as Analytics > Shift Close Report):\n// an image message with a caption inside the 24-hour window, the approved template with an image header outside it.\nvar r = $input.first().json;\nvar url = 'https://friedking.vercel.app/api/shift-report?t=' + String(r.image_token || '');\nvar tpl = r.template || { name: 'friedking_shift_report_v2', params: [] };\nreturn (r.recipients || []).map(function (x) {\n  var outgoing = x.in_window\n    ? { type: 'image', image: { link: url, caption: String(r.caption || 'Fried King shift closing report') } }\n    : { type: 'template', template: { name: tpl.name, language: { code: 'en' }, components: [\n        { type: 'header', parameters: [{ type: 'image', image: { link: url } }] },\n        { type: 'body', parameters: (tpl.params || []).map(function (p) { return { type: 'text', text: String(p) }; }) }\n      ] } };\n  return { json: { to: String(x.phone || '').replace(/[^0-9]/g, ''), via: x.in_window ? 'image' : 'template', outgoing: outgoing } };\n});\n"
+      }
+    },
+    {
+      "id": "aefe4be6-e28d-49e4-b242-845ebf4dc67c",
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ from: \"+919742175222\", to: \"+\" + $json.to }, $json.outgoing)) }}",
+        "options": {
+          "timeout": 20000,
+          "response": {
+            "response": {
+              "neverError": true,
+              "fullResponse": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sHKICxwNID36i9F",
+          "name": "Fried King | YCloud API Key"
+        }
+      }
+    },
+    {
+      "id": "d96e734b-ab60-48d9-85a4-d3b65af62862",
+      "name": "Summarize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// One line per number: sent / FAILED, with the reason when WhatsApp refused it.\nvar planned = $('Build Messages').all();\nvar results = $input.all();\nvar lines = planned.map(function (p, i) {\n  var res = (results[i] && results[i].json) || {};\n  var code = Number(res.statusCode || 0);\n  var body = res.body || res;\n  var good = code >= 200 && code < 300 && body && body.id;\n  var why = '';\n  if (!good) {\n    var e = (body && (body.error || body)) || {};\n    why = String(e.message || e.code || JSON.stringify(e)).replace(/\\s+/g, ' ').slice(0, 120);\n  }\n  return String(p.json.to).slice(-10) + ': ' + (good ? 'sent (' + p.json.via + ')' : 'FAILED (' + p.json.via + ') ' + why);\n});\nreturn [{ json: { status: lines.join('; ') } }];\n"
+      }
+    },
+    {
+      "id": "359e4037-e12b-4d86-857f-337957689f7e",
+      "name": "Save Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        0
+      ],
+      "parameters": {
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "url": "https://alhnmwwbdydcgcgnwhqw.supabase.co/rest/v1/rpc/complete_shift_report",
+        "jsonBody": "={{ JSON.stringify({ p_branch: \"pandeshwar\", p_status: $json.status }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "rB93QINuNPfEbMaT",
+          "name": "Fried King | Supabase (service role)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every Minute": {
+      "main": [
+        [
+          {
+            "node": "Claim Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claim Report": {
+      "main": [
+        [
+          {
+            "node": "Send?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send?": {
+      "main": [
+        [
+          {
+            "node": "Build Messages",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Build Messages": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "Save Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "none",
+    "executionOrder": "v1",
+    "availableInMCP": true
+  }
+}

@@ -1,0 +1,674 @@
+{
+  "name": "Fried King | Customer Account",
+  "nodes": [
+    {
+      "id": "789f3e92-c1f2-4ca0-a408-196ab56efc13",
+      "name": "OTP Request Webhook",
+      "webhookId": "0413c086-58a8-499d-818b-67502d3efdd8",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-request-otp",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "2e314a00-a4da-42f0-81b7-7223928ba80b",
+      "name": "Prepare OTP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "jsCode": "function cleanPhone(raw) {\n  var p = String(raw || '').replace(/[^0-9]/g, '');\n  if (p === '') return '';\n  if (p.length === 11 && p.charAt(0) === '0') return '91' + p.substring(1);\n  if (p.length === 10 && '6789'.indexOf(p.charAt(0)) !== -1) return '91' + p;\n  if (p.length === 12 && p.substring(0, 2) === '91') return p;\n  if (p.length >= 11 && p.length <= 15) return p;\n  return '91' + p;\n}\nvar hook = $('OTP Request Webhook').first().json;\nvar d = hook.body || hook;\nvar phone = cleanPhone(d.phone);\nif (!phone) { return [{ json: { invalid: true, reason: 'Enter a valid WhatsApp number' } }]; }\nvar code = String(Math.floor(100000 + Math.random() * 900000));\nvar expires = new Date(Date.now() + 5 * 60000).toISOString();\nreturn [{ json: { invalid: false, phone: phone, code: code, expires_at: expires } }];"
+      }
+    },
+    {
+      "id": "08c2c714-2df7-4fe0-b9c5-8fb8ff33d867",
+      "name": "Valid Phone? (OTP)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.invalid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "43c20aa1-cd19-4bc6-aaa9-e4c7704f4c72",
+      "name": "Check Recent Inbound (OTP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "=eq.{{ $('Prepare OTP').first().json.phone }}"
+            },
+            {
+              "name": "direction",
+              "value": "eq.inbound"
+            },
+            {
+              "name": "created_at",
+              "value": "=gte.{{ new Date(Date.now() - 24*60*60*1000).toISOString() }}"
+            },
+            {
+              "name": "select",
+              "value": "id"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "fa40af85-7caf-4ee5-b6b7-510524e2a677",
+      "name": "Has Recent Inbound? (OTP)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ !!$json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "f1f29404-8ad2-4038-9e69-4716ee6dcfae",
+      "name": "Upsert OTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/customer_otps",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $('Prepare OTP').first().json.phone, code: $('Prepare OTP').first().json.code, expires_at: $('Prepare OTP').first().json.expires_at, attempts: 0 }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "412d9784-65a5-4b6a-88bc-2a143dad97d9",
+      "name": "Send OTP WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages/sendDirectly",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: \"+919742175222\", to: \"+\" + String($('Prepare OTP').first().json.phone).replace(/[^0-9]/g, \"\"), type: 'text', text: { body: 'Your Fried King login code is ' + $('Prepare OTP').first().json.code + '. It expires in 5 minutes. Do not share this code with anyone.' } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sHKICxwNID36i9F",
+          "name": "Fried King | YCloud API Key"
+        }
+      }
+    },
+    {
+      "id": "a34914a3-1a8c-43fe-ade9-f2bcf044fd15",
+      "name": "Log OTP Sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $('Prepare OTP').first().json.phone, direction: 'outbound', sender: 'system', message_type: 'text', content: '[OTP sent]' }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "f779850e-b2f5-48a0-8724-894f00a67654",
+      "name": "Respond OTP Sent",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "ca2e704c-f8c5-4c49-a89a-961b8b23df4e",
+      "name": "Respond Message Us First",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1120,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: \"Message us on WhatsApp first, then try requesting a code.\", code: \"need_whatsapp_contact\" }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "ce31258c-8f3a-4aae-8e13-1130e43fa32c",
+      "name": "Respond OTP Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        288
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.reason }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "a9dff1fb-4215-401b-8654-c2f71d7eb4bc",
+      "name": "Concern Webhook",
+      "webhookId": "2379044a-87ba-4868-8433-17f7e7c3a4fe",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        608
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-concern",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "a35739d1-eda4-49fa-9edf-639f97f276f0",
+      "name": "Prepare Concern",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        608
+      ],
+      "parameters": {
+        "jsCode": "function cleanPhone(raw) {\n  var p = String(raw || '').replace(/[^0-9]/g, '');\n  if (p === '') return '';\n  if (p.length === 11 && p.charAt(0) === '0') return '91' + p.substring(1);\n  if (p.length === 10 && '6789'.indexOf(p.charAt(0)) !== -1) return '91' + p;\n  if (p.length === 12 && p.substring(0, 2) === '91') return p;\n  if (p.length >= 11 && p.length <= 15) return p;\n  return '91' + p;\n}\nvar hook = $('Concern Webhook').first().json;\nvar d = hook.body || hook;\nvar phone = cleanPhone(d.phone);\nvar msg = String(d.message || '').trim();\nvar orderNumber = String(d.order_number || '').trim();\nif (!phone || !msg) { return [{ json: { invalid: true, reason: 'Phone and a message are required' } }]; }\nvar content = '[Concern' + (orderNumber ? ' re ' + orderNumber : '') + '] ' + msg;\nreturn [{ json: { invalid: false, phone: phone, content: content } }];"
+      }
+    },
+    {
+      "id": "ec3cdcf8-68c8-47ea-8132-8d443df7866e",
+      "name": "Valid Concern?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        448,
+        608
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.invalid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "5b02255e-565d-4206-b522-c7c52dc470f9",
+      "name": "Insert Concern Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        512
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone: $json.phone, direction: 'inbound', sender: 'customer', message_type: 'text', content: $json.content }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "a9aad0aa-3bab-49ed-bb8e-01de242a08e3",
+      "name": "Respond Concern Received",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        512
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "fe40df65-5ae5-4b4f-a7e9-68d3f704dcb0",
+      "name": "Respond Concern Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        704
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.reason }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "OTP Request Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare OTP": {
+      "main": [
+        [
+          {
+            "node": "Valid Phone? (OTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Phone? (OTP)": {
+      "main": [
+        [
+          {
+            "node": "Check Recent Inbound (OTP)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond OTP Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Recent Inbound (OTP)": {
+      "main": [
+        [
+          {
+            "node": "Has Recent Inbound? (OTP)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Recent Inbound? (OTP)": {
+      "main": [
+        [
+          {
+            "node": "Upsert OTP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Message Us First",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert OTP": {
+      "main": [
+        [
+          {
+            "node": "Send OTP WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send OTP WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Log OTP Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log OTP Sent": {
+      "main": [
+        [
+          {
+            "node": "Respond OTP Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Concern Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Concern",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Concern": {
+      "main": [
+        [
+          {
+            "node": "Valid Concern?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Concern?": {
+      "main": [
+        [
+          {
+            "node": "Insert Concern Message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Concern Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Concern Message": {
+      "main": [
+        [
+          {
+            "node": "Respond Concern Received",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}

@@ -1,0 +1,466 @@
+{
+  "name": "Fried King | Receipt Image",
+  "nodes": [
+    {
+      "id": "f7de3c75-c33d-4b17-bcb9-0c287ccbb31a",
+      "name": "Receipt Webhook",
+      "webhookId": "a49d2660-26a4-4a5a-bf75-c9e62911018b",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "path": "friedking-receipt",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "2e1a940b-fab3-4664-b2c6-6564ac9d7707",
+      "name": "Valid Request?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "k1",
+              "leftValue": "={{ $json.query.key === 'fk_bWzKMd0MI4U3WEUCAGYlQxcb' && !!$json.query.order_number }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c2b54c67-079f-42ab-aaab-710c2ea54605",
+      "name": "Get Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "position": [
+        440,
+        -100
+      ],
+      "parameters": {
+        "url": "https://alhnmwwbdydcgcgnwhqw.supabase.co/rest/v1/rpc/receipt_order",
+        "authentication": "predefinedCredentialType",
+        "options": {
+          "timeout": 10000
+        },
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_order: String($('Receipt Webhook').first().json.query.order_number) }) }}",
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "rB93QINuNPfEbMaT",
+          "name": "Fried King | Supabase (service role)"
+        }
+      }
+    },
+    {
+      "id": "7581faef-240c-4f92-a39e-6b829e9079db",
+      "name": "Order Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "o1",
+              "leftValue": "={{ !!$json.order_number }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "27260bdb-f9ff-423a-9e51-70d067777d60",
+      "name": "Get Settings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        880,
+        -200
+      ],
+      "parameters": {
+        "url": "https://alhnmwwbdydcgcgnwhqw.supabase.co/rest/v1/branch_settings",
+        "authentication": "predefinedCredentialType",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "branch_id",
+              "value": "eq.a1b2c3d4-0001-0001-0001-000000000001"
+            },
+            {
+              "name": "select",
+              "value": "key,value"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        },
+        "nodeCredentialType": "supabaseApi"
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "rB93QINuNPfEbMaT",
+          "name": "Fried King | Supabase (service role)"
+        }
+      }
+    },
+    {
+      "id": "babbfe63-daaf-4768-bb36-70dc90ef5251",
+      "name": "Build Receipt HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "// Branded Fried King receipt. Restaurant details come from the settings table so nothing is hardcoded.\nfunction esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }\nfunction rs(n){ return '₹' + Math.round(Number(n||0)).toLocaleString('en-IN'); }\nvar oRaw = $('Get Order').first().json; var o = Array.isArray(oRaw) ? (oRaw[0]||{}) : oRaw;\nvar S = {}; $('Get Settings').all().forEach(function(it){ var r = it.json; (Array.isArray(r)?r:[r]).forEach(function(x){ if (x && x.key) S[x.key] = x.value; }); });\nvar items = [];\nif (Array.isArray(o.items_json) && o.items_json.length) {\n  items = o.items_json.map(function(i){ return { name: i.name || i.item_name, qty: Number(i.quantity)||1, price: Number(i.price||i.unit_price)||0 }; });\n} else {\n  items = String(o.items||'').split(', ').filter(Boolean).map(function(s){ var m = s.match(/^(.*) x(\\d+)/); return { name: m?m[1]:s, qty: m?Number(m[2]):1, price: 0 }; });\n}\nvar LABEL = { delivery:'Delivery', takeaway:'Takeaway', 'dine-in':'Dine-in' };\nvar type = LABEL[o.order_type] || 'Order';\nvar w = new Date(new Date(o.created_at || Date.now()).getTime() + 5.5*3600*1000);\nvar M = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];\nvar stamp = w.getUTCDate()+' '+M[w.getUTCMonth()]+' '+w.getUTCFullYear()+' · '+w.getUTCHours()+':'+String(w.getUTCMinutes()).padStart(2,'0');\nvar name = S.restaurant_name || 'Fried King';\nvar phone = S.phone || '+91 97421 75222';\nvar rows = items.map(function(i){ var lt = i.price*i.qty; return '<tr><td class=\"it\">'+esc(i.name)+'</td><td class=\"q\">x'+i.qty+'</td><td class=\"p\">'+(lt>0?rs(lt):'')+'</td></tr>'; }).join('');\nvar paid = String(o.payment_status||'') === 'paid';\nvar css = '*{box-sizing:border-box}body{margin:0;padding:24px 16px;background:#1A1A1A;font-family:Poppins,sans-serif;color:#1C1C1C}'+\n '.card{background:#FFFFFF;border-radius:18px;overflow:hidden;max-width:420px;margin:0 auto}'+\n '.top{background:#D62300;color:#fff;text-align:center;padding:22px 16px 18px}.chk{height:18px;background:repeating-conic-gradient(#D62300 0% 25%, #FFFFFF 0% 50%) 0 0/18px 18px}.top img{height:64px;border-radius:50%;background:#fff;padding:4px;margin-bottom:8px}'+\n '.top h1{margin:0;font-size:30px;letter-spacing:4px;font-weight:800}.top .tag{font-size:11px;letter-spacing:2px;color:#FFFFFF;margin-top:4px}'+\n '.top .ad{font-size:11px;opacity:.9;margin-top:6px;line-height:1.6}.body{padding:18px 20px 22px}'+\n '.num{text-align:center;font-size:24px;font-weight:800;letter-spacing:2px}.when{text-align:center;font-size:11px;color:#7A7A7A;margin-top:3px}'+\n '.pill{display:block;width:max-content;margin:12px auto 0;background:#FFFFFF;color:#D62300;border:2px solid #D62300;border-radius:30px;padding:6px 16px;font-size:12px;font-weight:700;letter-spacing:1px}'+\n '.kv{display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0}.kv span:first-child{color:#8A8A8A}.kv span:last-child{font-weight:600;text-align:right;max-width:65%}'+\n 'hr{border:none;border-top:1.5px dashed #F2B8AE;margin:14px 0}table{width:100%;border-collapse:collapse}td{padding:7px 0;font-size:13px;border-bottom:1px dotted #F6D2CC}'+\n 'td.it{font-weight:600}td.q{text-align:right;color:#8A8A8A;width:44px}td.p{text-align:right;font-weight:700;width:90px}'+\n '.total{margin-top:14px;background:#D62300;color:#fff;border-radius:12px;display:flex;justify-content:space-between;align-items:center;padding:13px 16px}'+\n '.total span{font-size:12px;letter-spacing:2px}.total b{font-size:24px}.foot{text-align:center;font-size:12px;color:#5A5A5A;margin-top:14px;line-height:1.7}.foot b{color:#D62300}';\nvar html = '<html><head><meta charset=\"utf-8\"><style>'+css+'</style></head><body><div class=\"card\"><div class=\"top\">'+\n (S.logo_url ? '<img src=\"'+esc(S.logo_url)+'\">' : '')+\n '<h1>'+esc(name.toUpperCase())+'</h1>'+(S.tagline?'<div class=\"tag\">'+esc(S.tagline)+'</div>':'')+\n '<div class=\"ad\">'+esc(S.address||'Arista Enclave, Ground Floor, 2nd Main Rd, Pandeshwar, Mangaluru, Karnataka 575001')+'<br>'+esc(phone)+'</div></div><div class=\"chk\"></div><div class=\"body\">'+\n '<div class=\"num\">'+esc(o.order_number)+'</div><div class=\"when\">'+esc(stamp)+'</div>'+\n '<span class=\"pill\">'+esc(type.toUpperCase())+(o.table_number?' · TABLE '+esc(o.table_number):'')+' · '+(paid?'PAID':(o.order_type==='delivery'?'CASH ON DELIVERY':'PAY AT COUNTER'))+'</span><hr>'+\n '<div class=\"kv\"><span>Name</span><span>'+esc(o.customer_name||'Guest')+'</span></div>'+\n '<div class=\"kv\"><span>Phone</span><span>'+esc(o.customer_phone||'')+'</span></div>'+\n (o.order_type==='delivery' && o.address ? '<div class=\"kv\"><span>Address</span><span>'+esc(o.address)+'</span></div>' : '')+\n '<hr><table>'+rows+'</table><div class=\"total\"><span>TOTAL</span><b>'+rs(Math.round(o.total))+'</b></div>'+\n '<div class=\"foot\">Thank you for ordering with <b>'+esc(name)+'</b>!<br>Questions? WhatsApp us on '+esc(phone)+'</div></div><div class=\"chk\"></div></div></body></html>';\nreturn [{ json: { html: html, google_fonts: 'Poppins:400,600,700,800', order_number: o.order_number } }];\n"
+      }
+    },
+    {
+      "id": "1b60b425-094f-4033-b7da-746a430713d7",
+      "name": "Render Image (HCTI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://hcti.io/v1/image",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ html: $json.html, google_fonts: $json.google_fonts, viewport_width: 460, device_scale: 2 }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "DSVxiXuQPAIU5gRM",
+          "name": "Fried King | HCTI API"
+        }
+      }
+    },
+    {
+      "id": "19750326-1c9f-434f-80e2-0c731fbb5386",
+      "name": "Download Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1540,
+        -200
+      ],
+      "parameters": {
+        "url": "={{ $json.url }}.png",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          },
+          "timeout": 20000
+        }
+      }
+    },
+    {
+      "id": "14774796-2d98-4258-b465-2fa3fdf8b44b",
+      "name": "Respond Image",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        -200
+      ],
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "image/png"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "public, max-age=86400"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "871c02c6-9591-4a5b-95e4-976fe2d0efac",
+      "name": "Respond Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        40
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Order not found",
+        "options": {
+          "responseCode": 404
+        }
+      }
+    },
+    {
+      "id": "9d58d868-0160-449a-ac44-885fae4310f6",
+      "name": "Respond Forbidden",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        140
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Forbidden",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "u1",
+              "leftValue": "={{ $('Receipt Webhook').first().json.query.format === 'url' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f149b169-9993-4fdd-86e0-e61842d102f6",
+      "name": "Want URL?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1430,
+        -200
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ url: $json.url ? $json.url + '.png' : null }) }}",
+        "options": {}
+      },
+      "id": "fdd186d2-dea4-4495-bd76-c94a6ef756c7",
+      "name": "Respond URL",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1650,
+        -320
+      ]
+    }
+  ],
+  "connections": {
+    "Receipt Webhook": {
+      "main": [
+        [
+          {
+            "node": "Valid Request?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Request?": {
+      "main": [
+        [
+          {
+            "node": "Get Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Forbidden",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order": {
+      "main": [
+        [
+          {
+            "node": "Order Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Found?": {
+      "main": [
+        [
+          {
+            "node": "Get Settings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Settings": {
+      "main": [
+        [
+          {
+            "node": "Build Receipt HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Receipt HTML": {
+      "main": [
+        [
+          {
+            "node": "Render Image (HCTI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Image (HCTI)": {
+      "main": [
+        [
+          {
+            "node": "Want URL?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Image": {
+      "main": [
+        [
+          {
+            "node": "Respond Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Want URL?": {
+      "main": [
+        [
+          {
+            "node": "Respond URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Download Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}

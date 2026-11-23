@@ -1,0 +1,502 @@
+{
+  "name": "Fried King | Rider Dispatch",
+  "nodes": [
+    {
+      "id": "3a4f92d9-e103-45cb-9e70-84dedcef2be3",
+      "name": "Rider Webhook",
+      "webhookId": "7656dd41-5082-455b-91c5-4ef423cc34e7",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-rider-dispatch",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "97e2e3f4-beb0-4c8f-8e8b-0ec92d752989",
+      "name": "Extract Dispatch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "jsCode": "\nvar h = $('Rider Webhook').first().json;\nvar d = h.body || h;\nvar num = String(d.order_number || '').trim();\nvar rp = String(d.rider_phone || '').replace(/[^0-9]/g, '');\nif (rp.length === 10) { rp = '91' + rp; }\nif (num === '' || rp === '') {\n  return [{ json: { error: true, reason: 'order_number and rider_phone are required' } }];\n}\nreturn [{ json: { error: false, order_number: num, rider_phone: rp, rider_id: String(d.rider_id || '') } }];\n"
+      }
+    },
+    {
+      "id": "1c81dcfb-ec06-4d6f-9553-ebac03995875",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "130ae889-273b-4b07-b46c-5b485d296a79",
+      "name": "Get Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/orders",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "order_number",
+              "value": "=eq.{{ $json.order_number }}"
+            },
+            {
+              "name": "select",
+              "value": "*"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "K3qQDKPl2aa72ykk",
+          "name": "Fried King | Supabase Service Key"
+        }
+      }
+    },
+    {
+      "id": "7a1d7da2-0c2e-4543-ba7b-a85e4e0cc0bc",
+      "name": "Build Rider Note",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        96
+      ],
+      "parameters": {
+        "jsCode": "\nvar rows = $input.first().json;\nvar o = Array.isArray(rows) ? (rows[0] || null) : (rows || null);\nif (o && typeof o === 'object' && Object.keys(o).length === 0) { o = null; }\nvar ex = $('Extract Dispatch').first().json;\nif (!o) { return [{ json: { skip: true, order_number: ex.order_number } }]; }\n\nvar amt = Number(o.total || 0);\nvar addr = [o.address, o.landmark, o.city, o.pincode].filter(function (x) { return x && String(x).trim() !== ''; }).join(', ');\nvar maps = addr ? ('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr)) : '';\n\nvar msg = '*New delivery - Fried King*\\n' +\n  'Order: ' + (o.order_number || '') + '\\n' +\n  'Customer: ' + (o.customer_name || 'Guest') + '\\n' +\n  'Phone: ' + (o.customer_phone || '') + '\\n\\n' +\n  'Address: ' + (addr || 'Ask the counter') + '\\n' +\n  (maps ? (maps + '\\n') : '') + '\\n' +\n  'Items: ' + (o.items || '') + '\\n\\n' +\n  '*COLLECT Rs ' + amt + ' IN CASH*\\n' +\n  'Hand the cash to the counter when you return.';\n\nreturn [{ json: { skip: false, rider_phone: ex.rider_phone, message: msg,\n                  order_number: o.order_number, amount: amt } }];\n"
+      }
+    },
+    {
+      "id": "71309d66-b958-42cf-9b95-aa9a5729dcf9",
+      "name": "Order Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "580e1488-059f-48f4-9cb5-9bcf53429bf1",
+      "name": "WhatsApp Rider",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput",
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ from: \"+919742175222\", to: \"+\" + String($json.rider_phone).replace(/[^0-9]/g, \"\"), type: \"text\", text: { body: $json.message } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sHKICxwNID36i9F",
+          "name": "Fried King | YCloud API Key"
+        }
+      }
+    },
+    {
+      "id": "040b8d7f-1671-45e0-a491-3efd6070fad4",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, order_number: $('Extract Dispatch').first().json.order_number }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "d71d0f3f-f64b-4222-84f5-414ab3c7d50b",
+      "name": "Respond Not Found",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1344,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: \"Order not found\" }) }}",
+        "options": {
+          "responseCode": 404,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "14b60cf3-3cf8-4f0b-bb5d-8ea8d72575af",
+      "name": "Respond Invalid",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        288
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.reason }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "f504e022-22d2-4156-abf4-590e93123196",
+      "name": "Verify Staff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        120,
+        412
+      ],
+      "parameters": {
+        "authentication": "none",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "FK_SUPABASE_PUBLISHABLE_KEY_PENDING"
+            },
+            {
+              "name": "Authorization",
+              "value": "={{ $json.headers.authorization || 'Bearer none' }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "jsonBody": "={{ JSON.stringify({}) }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "sendHeaders": true,
+        "specifyBody": "json",
+        "url": "https://fk-supabase-ref-pending.supabase.co/rest/v1/rpc/staff_check"
+      }
+    },
+    {
+      "id": "1aa84a73-7aab-43ed-bca3-94c0ab379bfa",
+      "name": "Is Staff?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        340,
+        412
+      ],
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "s3",
+              "leftValue": "={{ $json.statusCode === 200 && !!$json.body && $json.body.staff === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          }
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "7aa1cbd9-7146-48a8-9a64-1d27d5187b71",
+      "name": "Respond Unauthorised",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        560,
+        592
+      ],
+      "parameters": {
+        "options": {
+          "responseCode": 401,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        },
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: \"Not authorised. Please log in to the dashboard again.\" }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Rider Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Staff",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Dispatch": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Get Order",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Order": {
+      "main": [
+        [
+          {
+            "node": "Build Rider Note",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Rider Note": {
+      "main": [
+        [
+          {
+            "node": "Order Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Order Found?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp Rider",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Not Found",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp Rider": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Staff": {
+      "main": [
+        [
+          {
+            "node": "Is Staff?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Staff?": {
+      "main": [
+        [
+          {
+            "node": "Extract Dispatch",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Unauthorised",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  }
+}

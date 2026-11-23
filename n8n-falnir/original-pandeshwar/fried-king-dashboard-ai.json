@@ -1,0 +1,120 @@
+{
+  "name": "Fried King | Dashboard AI",
+  "nodes": [
+    {
+      "id": "41c21127-c0b3-4b43-9902-9e681d79bff7",
+      "name": "Ask Webhook",
+      "webhookId": "231c43e3-06c8-4af6-877f-c8df2ee537c8",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-ai-315b541f222ff59a2b6ab9cfcee02a42",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "08baa4f3-b2bc-4ded-ac5d-f3db081fffb5",
+      "name": "Ask OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4.1-mini-2025-04-14', temperature: 0.2, max_tokens: 500, messages: [ { role: 'system', content: String($json.body.system || '').slice(0, 12000) } ].concat(Array.isArray($json.body.history) ? $json.body.history.slice(-6) : []).concat([ { role: 'user', content: String($json.body.question || '').slice(0, 600) } ]) }) }}",
+        "options": {
+          "timeout": 25000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "n2e59mhPDPr2lGEv",
+          "name": "Fried King | OpenAI"
+        }
+      }
+    },
+    {
+      "id": "38a58b93-640a-487f-baa5-c3ac472ccd20",
+      "name": "Build Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "var r = $input.first().json || {};\nvar reply = '';\ntry { reply = r.choices[0].message.content || ''; } catch (e) { reply = ''; }\nreturn [{ json: { reply: String(reply).trim(), debug: reply ? '' : JSON.stringify(r).slice(0, 400) } }];\n"
+      }
+    },
+    {
+      "id": "866499cf-f0ca-4c16-ba4d-fccceaf5f554",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        700,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ reply: $json.reply, debug: $json.debug }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Ask Webhook": {
+      "main": [
+        [
+          {
+            "node": "Ask OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ask OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Build Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Reply": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataSuccessExecution": "none",
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "availableInMCP": true
+  }
+}

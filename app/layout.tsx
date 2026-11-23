@@ -13,7 +13,7 @@ const barlow = Barlow_Condensed({
 
 export const metadata: Metadata = {
   title: 'Fried King | Order Online',
-  description: 'Order Fried King fried chicken online from Pandeshwar, Mangaluru. Pickup or delivery.',
+  description: 'Order Fried King fried chicken online in Mangaluru. Pickup or delivery.',
 }
 
 export const viewport: Viewport = {
