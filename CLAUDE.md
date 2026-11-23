@@ -69,7 +69,7 @@ Column names that are easy to get wrong:
 - `order_events`: outbox for n8n. `status` enum pending/claimed/done/failed, `event_type`, `payload` jsonb
 - `customers` is unique on `(branch_id, phone)`
 
-Seeded: Pandeshwar only (using branch id `a1b2c3d4-0001-0001-0001-000000000001`), 14 categories, 85 items. Falnir and Kadri are waiting on menu data from the client. UUIDs must be valid hex.
+Branches: Pandeshwar (branch id `a1b2c3d4-0001-0001-0001-000000000001`, the original) and Falnir (created 2026-11-23 as a copy of Pandeshwar with `supabase/friedking_new_branch_template.sql`, first as `friedking_attavar_branch.sql` + `friedking_attavar_to_falnir.sql`). Kadri is still to come. UUIDs must be valid hex.
 
 ## Rules to keep
 
@@ -81,7 +81,10 @@ Seeded: Pandeshwar only (using branch id `a1b2c3d4-0001-0001-0001-000000000001`)
 - Veg/non-veg marks follow FSSAI (green square for veg, red for non-veg). Every item has `is_veg`.
 - Cart is saved in localStorage per branch; wrap storage access in try/catch.
 - Brand tokens (`fk-*`) live in `app/globals.css`; the dashboard has its own scoped variables in `app/dashboard/dashboard.css`.
-- The WhatsApp bot link format is `/?branch=pandeshwar&phone=91XXXXXXXXXX`. It skips the branch picker and pre-fills the phone.
+- Customer links: `/<slug>` (e.g. `/falnir`) opens a branch; the bare `/` shows the branch picker. `/?branch=<slug>` still works, and old links with no branch (`?t=`, `?ph=`, `?table=`) open Pandeshwar. The WhatsApp bot link format is `/pandeshwar?ph=91XXXXXXXXXX` (older `/?branch=pandeshwar&phone=...` also works) and pre-fills the phone.
+- **Branch access:** every dashboard query is scoped by branch. `staff.branch_id` null = global (all branches), set = that branch only. Logins created in a branch's Settings are always branch-only, owners too; global owners are created in Supabase only and branch Settings cannot edit them (`needOwnBranchStaff`).
+- **Never commit n8n exports or webhook URLs** (`n8n-falnir/` and `n8n-backups/` are gitignored): the long random webhook paths act as passwords. Per-branch webhook URLs live in `branch_settings` (`otp_webhook_url`, `ai_webhook_url`).
+- Adding a branch: follow `docs/NEW_BRANCH_CHECKLIST.md`.
 - Internal platform controls use `/platform-admin` and a dedicated `platform_admins` allowlist, not a hidden dashboard staff account. Keep its API server-authorized and audit logged.
 
 ## Status
@@ -97,7 +100,7 @@ Decisions (Maithri, 2026-11-14):
 - Roles: owner (all sections, all branches), manager (no Contacts, Blast, Settings), staff (POS, Orders, Tables).
 - Stock moves only through `fk_stock_move` / `fk_order_stock` (deduct on accept or POS create, restore on cancel). Points are earned via `fk_loyalty_earn` when an order is marked delivered.
 
-**WhatsApp bot** (n8n `Fried King | Main` on staff.brightmedia.tech, YCloud number 9742175222, Pandeshwar only). Database side is `supabase/friedking_whatsapp_bot.sql`: `chat_context`, `customer_draft`, `customer_amend`, `customer_confirm`, `customer_cancel`, `receipt_order` (all take `p_branch`, default `pandeshwar`). Chat lives in `chat_messages` / `chat_sessions` (what Live Chat reads). A WhatsApp order starts as an `orders` row with status `draft` (hidden from the dashboard, which filters by real statuses); Confirm makes it `pending` and writes the normal `order_created` event (`source: whatsapp`); amending a pending order writes `order_amended`. Customer-facing order numbers are `FK-<order_number>`. Menu link comes from `branch_settings.menu_url` (default `https://friedking.vercel.app/`; the bot appends `?ph=<phone>`). The workflow carries the Pandeshwar branch id in its chat nodes; a second branch needs its own copy.
+**WhatsApp bot** (n8n `Fried King | Main` on staff.brightmedia.tech, YCloud number 9742175222, Pandeshwar only; Falnir has its own copy of the workflows). Database side is `supabase/friedking_whatsapp_bot.sql`: `chat_context`, `customer_draft`, `customer_amend`, `customer_confirm`, `customer_cancel`, `receipt_order` (all take `p_branch`, default `pandeshwar`). Chat lives in `chat_messages` / `chat_sessions` (what Live Chat reads). A WhatsApp order starts as an `orders` row with status `draft` (hidden from the dashboard, which filters by real statuses); Confirm makes it `pending` and writes the normal `order_created` event (`source: whatsapp`); amending a pending order writes `order_amended`. Customer-facing order numbers are `FK-<order_number>`. Menu link comes from `branch_settings.menu_url` (default `https://friedking.vercel.app/`; the bot appends `?ph=<phone>`). The workflow carries the Pandeshwar branch id in its chat nodes; a second branch needs its own copy.
 
 **Locked WhatsApp details on the website:** `chat_context` returns a menu link with a private token (`?t=`, table `wa_links`, valid 48 h). `/api/link` turns it into a masked number and name; the checkout shows "Linked to your WhatsApp" and does not let the number be edited, and `/api/order` uses the number stored for the token (the browser's number is ignored). Without a valid token the form is manual as before. Item notes travel per line (`items[].note` -> `order_items.notes`), not merged into the order note.
 
@@ -127,10 +130,10 @@ Dine-in on the website: `/?table=3` (or a WhatsApp link whose phone has an open 
 **Order notifier** (n8n `Fried King | Order Events`, polls every 10 s): `supabase/friedking_order_notifier.sql` gives `claim_order_events` / `complete_order_event`. It sends `order_status_changed` events to the customer on WhatsApp: accepted = receipt image drawn by the app itself (`GET /api/receipt?order=<order uuid>`, next/og, same approach as Rasoi; no HCTI) or itemised text if that fails, then ready / delivered / cancelled texts. Only inside the 24-hour reply window; events older than 30 minutes are dropped. n8n talks to Supabase through the credential `Fried King | Supabase (service role)` (type supabaseApi; a single-header credential does not work because Supabase needs both `apikey` and `Authorization`). (`Fried King | Main` still uses HCTI for its amended-order invoice picture.)
 
 Not done yet:
-- Bot: table QR scans ("Hi, I'm at Table 3") call `open_table_session`; a customer with an open table gets their WhatsApp orders attached to it as dine-in. The old `Dine-In & Dispatch`, `Table Close`, `Rider Dispatch`, `Send Invoice` and `PWA Order Receiver` workflows are still Oceana copies with a placeholder database and stay inactive. The old `Fried King | Status Notifier` is superseded by `Order Events` and stays inactive. Rider "Payment collected" button is a stub. The Route node's opening hours are hard-coded 7:00 to 23:30, not the branch hours.
+- Bot: table QR scans ("Hi, I'm at Table 3") call `open_table_session`; a customer with an open table gets their WhatsApp orders attached to it as dine-in. The old `Dine-In & Dispatch`, `Table Close`, `Rider Dispatch`, `Send Invoice` and `PWA Order Receiver` workflows are still Oceana copies with a placeholder database and stay inactive. The old `Fried King | Status Notifier` is superseded by `Order Events` and stays inactive. Rider "Payment collected" button is a stub.
 - No phone verification at checkout (OTP functions exist, not called). No item variants UI.
 - n8n workflows and the YCloud connection (pending on the client and another developer).
-- Only Pandeshwar is seeded; Falnir and Kadri wait on menu data.
+- Falnir (7337687522): data copied and dashboard ready; its YCloud setup is pending and its n8n copies (`Fried King Falnir | ...`) are inactive until then. Blast Sender is not branch-aware (sends from Pandeshwar's number) and `Chat Replies` on Pandeshwar is inactive on purpose; neither is in use. Kadri is not created yet.
 
 Open questions for the client (do not guess): delivery rules per branch.
 
