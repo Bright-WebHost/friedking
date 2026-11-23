@@ -1,5 +1,5 @@
 import { SETTING_KEYS } from '@/lib/dashboard/settings'
-import { audit, check, clearBranchCache, getSettings, HttpError, id, optStr, str, uploadImage } from '@/lib/dashboard/server'
+import { type Ctx, audit, check, clearBranchCache, getSettings, HttpError, id, optStr, str, uploadImage } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
 const ROLES = ['owner', 'manager', 'staff']
@@ -27,13 +27,23 @@ function cleanSetting(key: string, raw: unknown): string {
   return v
 }
 
+/** Branch Settings may only change logins that belong to this branch; all-branch (global) accounts are managed in Supabase. */
+async function needOwnBranchStaff(ctx: Ctx, userId: string) {
+  const { data } = await ctx.admin.from('staff').select('branch_id').eq('user_id', userId).maybeSingle()
+  if (!data) throw new HttpError(404, 'Staff member not found')
+  if (data.branch_id !== ctx.branch.id) throw new HttpError(403, 'That login is not managed from this branch')
+}
+
 export const settingsHandler: Handler = {
   sections: ['settings'],
   async get(ctx) {
     const [settings, pincodes, staff, categories, promotions] = await Promise.all([
       getSettings(ctx),
       ctx.admin.from('delivery_pincodes').select('*').eq('branch_id', ctx.branch.id).order('pincode'),
-      ctx.admin.from('staff').select('*').or(`branch_id.eq.${ctx.branch.id},branch_id.is.null`).order('created_at'),
+      // A branch login sees only its own branch's staff; global (all-branch) owners also see the global accounts.
+      ctx.staff.branchId === null
+        ? ctx.admin.from('staff').select('*').or(`branch_id.eq.${ctx.branch.id},branch_id.is.null`).order('created_at')
+        : ctx.admin.from('staff').select('*').eq('branch_id', ctx.branch.id).order('created_at'),
       ctx.admin.from('menu_categories').select('id, name, image_url, sort_order').eq('branch_id', ctx.branch.id).order('sort_order'),
       ctx.admin.from('menu_promotions').select('*').eq('branch_id', ctx.branch.id).order('created_at', { ascending: false }),
     ])
@@ -136,7 +146,8 @@ export const settingsHandler: Handler = {
         throw new HttpError(409, created.error?.message.includes('already') ? 'That email already has a login' : 'Could not create the login')
       }
       const res = await ctx.admin.from('staff').insert({
-        user_id: created.data.user.id, branch_id: role === 'owner' ? null : ctx.branch.id, role, name, email, is_active: true,
+        // Every login made here belongs to this branch, owners too. All-branch (global) owners are created in Supabase only.
+        user_id: created.data.user.id, branch_id: ctx.branch.id, role, name, email, is_active: true,
       })
       if (res.error) {
         await ctx.admin.auth.admin.deleteUser(created.data.user.id)
@@ -149,11 +160,13 @@ export const settingsHandler: Handler = {
       const userId = id(b.userId, 'staff member')
       if (userId === ctx.staff.userId) throw new HttpError(400, 'You cannot change your own role')
       const role = ROLES.includes(String(b.role)) ? String(b.role) : 'staff'
-      check(await ctx.admin.from('staff').update({ role, branch_id: role === 'owner' ? null : ctx.branch.id }).eq('user_id', userId), 'update the role')
+      await needOwnBranchStaff(ctx, userId)
+      check(await ctx.admin.from('staff').update({ role }).eq('user_id', userId), 'update the role')
       return { ok: true }
     },
     async staffActive(ctx, b) {
       const userId = id(b.userId, 'staff member')
+      await needOwnBranchStaff(ctx, userId)
       check(await ctx.admin.from('staff').update({ is_active: bool(b.active) }).eq('user_id', userId), 'update the staff member')
       return { ok: true }
     },
@@ -161,6 +174,7 @@ export const settingsHandler: Handler = {
     async removeStaff(ctx, b) {
       const userId = id(b.userId, 'staff member')
       if (userId === ctx.staff.userId) throw new HttpError(400, 'You cannot remove yourself')
+      await needOwnBranchStaff(ctx, userId)
       check(await ctx.admin.from('staff').delete().eq('user_id', userId), 'remove the staff member')
       await audit(ctx, { action: 'staff_remove', detail: `by ${ctx.staff.name}` })
       return { ok: true }
