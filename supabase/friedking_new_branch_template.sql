@@ -15,7 +15,9 @@ declare
   new_slug    text := 'kadri';                              -- lower-case, used in the link: friedking.vercel.app/kadri
   new_name    text := 'Fried King Kadri';
   new_address text := 'City Commercial Complex, near City Hospital, Mallikatte, Kadri, Mangaluru, Karnataka 575003';
-  new_whatsapp text := '';                                  -- 10 digits, no +91; leave '' until the branch has its number (set later in Dashboard > Settings)
+  new_whatsapp text := '7090390919';                        -- 10 digits, no +91 (table QR codes and invoices); '' if not known yet
+  new_opens   text := '12:00';                              -- opening time, 24-hour
+  new_closes  text := '23:00';                              -- closing time, 24-hour (23:00 = 11 PM)
   copy_from   text := 'pandeshwar';                         -- branch whose menu and settings are copied
   -- ======================================================
   src uuid;
@@ -35,12 +37,12 @@ begin
   create temp table item_map (old_id uuid, new_id uuid) on commit drop;
   create temp table stock_map(old_id uuid, new_id uuid) on commit drop;
 
-  -- 1. Branch row (opening hours copied from the source; change them in Dashboard > Settings > Hours)
+  -- 1. Branch row (opening hours from the values above; change later in Dashboard > Settings > Hours)
   insert into public.branches
   select (jsonb_populate_record(null::public.branches,
            to_jsonb(b) || jsonb_build_object(
              'id', dst, 'name', new_name, 'slug', new_slug, 'address', new_address,
-             'phone', null, 'whatsapp_number', null, 'created_at', now()))).*
+             'phone', null, 'whatsapp_number', null, 'opens_at', new_opens, 'closes_at', new_closes, 'created_at', now()))).*
   from public.branches b where b.id = src;
 
   -- 2. Categories
