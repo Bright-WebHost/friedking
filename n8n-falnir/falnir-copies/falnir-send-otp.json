@@ -1,0 +1,209 @@
+{
+  "name": "Fried King Falnir | Send OTP",
+  "nodes": [
+    {
+      "id": "8c9b6ae5-7213-420f-ac35-2d8b8642380e",
+      "name": "OTP Webhook",
+      "webhookId": "fd189710-5ccd-42c4-9748-70c3c418669a",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "friedking-falnir-otp-780f5dd4c7e5c77b5e875c0bb8ca32c7",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "8db4ebce-2f28-4390-85e2-9a1e20268b44",
+      "name": "Window Open",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://alhnmwwbdydcgcgnwhqw.supabase.co/rest/v1/rpc/otp_window_open",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ p_phone: $json.body.phone }) }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "credentials": {
+        "supabaseApi": {
+          "id": "rB93QINuNPfEbMaT",
+          "name": "Fried King | Supabase (service role)"
+        }
+      }
+    },
+    {
+      "id": "86176ab8-9619-4501-90c1-644ea39434cc",
+      "name": "Build OTP Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nvar b = $('OTP Webhook').first().json.body || {};\nvar v = $input.first().json;\nvar inWindow = (v === true) || (Array.isArray(v) && v[0] === true) || (v && v.otp_window_open === true);\nvar otp = String(b.otp || '');\nvar to = String(b.phone || '').replace(/[^0-9]/g, '');\nvar outgoing;\nif (inWindow) {\n  outgoing = { type: 'text', text: { body: 'Your Fried King OTP is *' + otp + '*. Enter it on the website to continue.' } };\n} else {\n  outgoing = { type: 'template', template: { name: String(b.template || 'friedking_otp'), language: { code: String(b.lang || 'en') },\n    components: [\n      { type: 'body', parameters: [{ type: 'text', text: otp }] },\n      { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: otp }] }\n    ] } };\n}\nreturn [{ json: { to: to, outgoing: outgoing, via: inWindow ? 'text' : 'template' } }];\n"
+      }
+    },
+    {
+      "id": "1b8b0b1b-4238-4d82-b241-e11f6f6aaa6a",
+      "name": "Send OTP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "onError": "continueRegularOutput",
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "method": "POST",
+        "url": "https://api.ycloud.com/v2/whatsapp/messages",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ from: \"+917337687522\", to: \"+\" + String($json.to).replace(/[^0-9]/g, \"\") }, $json.outgoing)) }}",
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2sHKICxwNID36i9F",
+          "name": "Fried King | YCloud API Key"
+        }
+      }
+    },
+    {
+      "id": "e9af982b-29c5-46dd-9d52-d1aaedaadc22",
+      "name": "Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "\nvar r = $input.first().json || {};\nvar ok = !!(r.id || r.wamid) && !r.error && !r.statusCode;\nreturn [{ json: { ok: ok, via: $('Build OTP Message').first().json.via } }];\n"
+      }
+    },
+    {
+      "id": "ac1c86c3-0ddc-40bc-9c41-0b7239589294",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.ok, via: $json.via }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "OTP Webhook": {
+      "main": [
+        [
+          {
+            "node": "Window Open",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Open": {
+      "main": [
+        [
+          {
+            "node": "Build OTP Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build OTP Message": {
+      "main": [
+        [
+          {
+            "node": "Send OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send OTP": {
+      "main": [
+        [
+          {
+            "node": "Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Result": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveManualExecutions": false,
+    "saveDataErrorExecution": "none",
+    "saveDataSuccessExecution": "none",
+    "timezone": "Asia/Kolkata",
+    "executionOrder": "v1",
+    "availableInMCP": true
+  }
+}
