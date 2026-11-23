@@ -14,8 +14,8 @@ declare
   -- ===================== EDIT THESE =====================
   new_slug    text := 'kadri';                              -- lower-case, used in the link: friedking.vercel.app/kadri
   new_name    text := 'Fried King Kadri';
-  new_address text := 'Kadri, Mangaluru, Karnataka';
-  new_whatsapp text := '9999999999';                        -- 10 digits, no +91 (table QR codes and invoices)
+  new_address text := 'City Commercial Complex, near City Hospital, Mallikatte, Kadri, Mangaluru, Karnataka 575003';
+  new_whatsapp text := '';                                  -- 10 digits, no +91; leave '' until the branch has its number (set later in Dashboard > Settings)
   copy_from   text := 'pandeshwar';                         -- branch whose menu and settings are copied
   -- ======================================================
   src uuid;
@@ -26,7 +26,7 @@ begin
   select id into src from public.branches where slug = copy_from;
   if src is null then raise exception 'Source branch % not found', copy_from; end if;
   if new_slug !~ '^[a-z0-9-]+$' then raise exception 'Slug must be lower-case letters, numbers and dashes'; end if;
-  if new_whatsapp !~ '^[0-9]{10}$' then raise exception 'WhatsApp number must be 10 digits'; end if;
+  if new_whatsapp <> '' and new_whatsapp !~ '^[0-9]{10}$' then raise exception 'WhatsApp number must be 10 digits (or empty)'; end if;
   if exists (select 1 from public.branches where slug = new_slug) then
     raise exception 'Branch % already exists - nothing was changed', new_slug;
   end if;
@@ -100,9 +100,12 @@ begin
     and key not like 'shift\_report\_%'
     and key not in ('menu_url', 'otp_webhook_url', 'whatsapp_number', 'gstin');
 
-  insert into public.branch_settings (branch_id, key, value) values
-    (dst, 'whatsapp_number', new_whatsapp),
-    (dst, 'menu_url', 'https://friedking.vercel.app/' || new_slug);
+  insert into public.branch_settings (branch_id, key, value)
+  values (dst, 'menu_url', 'https://friedking.vercel.app/' || new_slug);
+
+  if new_whatsapp <> '' then
+    insert into public.branch_settings (branch_id, key, value) values (dst, 'whatsapp_number', new_whatsapp);
+  end if;
 
   -- 7. Dine-in tables (pincodes are NOT copied: add this branch's delivery areas in Settings)
   for r in select * from public.restaurant_tables where branch_id = src loop
