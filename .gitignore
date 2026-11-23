@@ -31,3 +31,7 @@ content-drafts/media/
 *.mp4
 n8n-backups/
 scratch/
+
+# n8n workflow exports contain secret webhook URLs - keep local only
+n8n-falnir/
+n8n-backups/

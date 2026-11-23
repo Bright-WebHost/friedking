@@ -6,7 +6,7 @@ select b.id, v.key, v.value
 from public.branches b,
      (values
        -- OTP is sent by the Falnir "Send OTP" workflow (from Falnir's WhatsApp number)
-       ('otp_webhook_url', 'https://staff.brightmedia.tech/webhook/friedking-falnir-otp-780f5dd4c7e5c77b5e875c0bb8ca32c7'),
+       ('otp_webhook_url', 'PASTE_FALNIR_OTP_WEBHOOK_URL_HERE'),
        -- the bot's menu link for Falnir customers
        ('menu_url', 'https://friedking.vercel.app/falnir')
      ) as v(key, value)
