@@ -3,7 +3,7 @@
 -- and Falnir's WhatsApp account cannot create templates yet. Here the CUSTOMER messages us first ("VERIFY ABC123"),
 -- which opens the free 24-hour window, and the bot confirms. Works for every branch. Safe to run more than once.
 --
--- RUN ORDER: 1) this file  2) tell Claude (it then updates the n8n Main workflows)  The website code is already deployed
+-- RUN ORDER: 1) this file  2) tell Claude (it then updates the Falnir n8n Main workflow). The website code is already deployed
 -- and keeps working exactly as before until this file is run.
 
 -- 1. Which branch a verification was started for (so a Falnir code can only be used on the Falnir number)
@@ -37,7 +37,13 @@ grant execute on function public.wa_verify(text, text, text) to service_role;
 -- 3. Check: both lines should return false (no such code) without an error
 select public.wa_verify('ZZZZZZ', '+919999999999') as any_branch, public.wa_verify('ZZZZZZ', '+919999999999', 'falnir') as falnir;
 
--- 4. (NOT needed any more.) Falnir and Kadri keep their OTP link: outside the 24 h window their OTP goes by SMS (MSG91) once
+-- 4. Switch "Verify on WhatsApp" ON for Falnir only (other branches stay off until their n8n Main is updated).
+--    To enable another branch later, add a row with key 'verify_by_message' and value '1' for it.
+insert into public.branch_settings (branch_id, key, value)
+select b.id, 'verify_by_message', '1' from public.branches b where b.slug = 'falnir'
+on conflict (branch_id, key) do update set value = '1', updated_at = now();
+
+-- 5. (NOT needed any more.) Falnir and Kadri keep their OTP link: outside the 24 h window their OTP goes by SMS (MSG91) once
 --    an SMS template is configured (see docs/SMS_OTP_MSG91.md). Until then, customers who cannot get an OTP use the
 --    "Verify by WhatsApp message" option on the same card. Only if you ever want a branch to offer ONLY the message option:
 --    delete from public.branch_settings where key = 'otp_webhook_url'

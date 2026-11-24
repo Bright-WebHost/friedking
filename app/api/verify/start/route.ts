@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const db = createAdminClient()
     if (!(await verificationEnabled(db))) return NextResponse.json({ enabled: false }, { headers: { 'Cache-Control': 'no-store' } })
     const cfg = await loadBranchVerifySettings(db, branchSlugOf(req.nextUrl.searchParams.get('branch')))
-    const message = !!cfg?.whatsappNumber && (await messageVerificationInstalled(db))
+    const message = !!cfg?.verifyByMessage && !!cfg?.whatsappNumber && (await messageVerificationInstalled(db))
     return NextResponse.json({ enabled: true, otp: !!cfg?.otpWebhookUrl, message }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ enabled: false })
@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     // ── Verify by sending a WhatsApp message (no template) ───────────────────────
     if (b.mode === 'message') {
-      if (!cfg.whatsappNumber) return fail('WhatsApp verification is not set up for this branch yet.', 503)
+      if (!cfg.verifyByMessage || !cfg.whatsappNumber) return fail('WhatsApp verification is not set up for this branch yet.', 503)
       if (!(await messageVerificationInstalled(db))) return fail('WhatsApp verification is not available yet. Please try again later.', 503)
       if (ip) {
         const { count } = await db.from('wa_verifications').select('id', { count: 'exact', head: true }).eq('ip', ip).gt('created_at', hourAgo)
