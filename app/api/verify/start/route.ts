@@ -26,7 +26,8 @@ export async function GET(req: NextRequest) {
     if (!(await verificationEnabled(db))) return NextResponse.json({ enabled: false }, { headers: { 'Cache-Control': 'no-store' } })
     const cfg = await loadBranchVerifySettings(db, branchSlugOf(req.nextUrl.searchParams.get('branch')))
     const message = !!cfg?.verifyByMessage && !!cfg?.whatsappNumber && (await messageVerificationInstalled(db))
-    return NextResponse.json({ enabled: true, otp: !!cfg?.otpWebhookUrl, message }, { headers: { 'Cache-Control': 'no-store' } })
+    // 'only' hides the OTP completely (the branch's Send OTP link stays configured for later).
+    return NextResponse.json({ enabled: true, otp: !!cfg?.otpWebhookUrl && !cfg?.messageOnly, message }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ enabled: false })
   }
@@ -93,6 +94,8 @@ export async function POST(req: NextRequest) {
       const { count } = await db.from('wa_verifications').select('id', { count: 'exact', head: true }).eq('ip', ip).gt('created_at', hourAgo)
       if ((count ?? 0) >= 15) return fail('Too many OTP requests. Try again later.', 429)
     }
+
+    if (cfg.messageOnly) return fail('Please verify with the WhatsApp button.', 403)
 
     // This branch's own Send OTP link (each branch has its own WhatsApp number, so its own workflow).
     const url = cfg.otpWebhookUrl

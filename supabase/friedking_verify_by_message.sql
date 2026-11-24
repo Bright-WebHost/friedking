@@ -37,11 +37,12 @@ grant execute on function public.wa_verify(text, text, text) to service_role;
 -- 3. Check: both lines should return false (no such code) without an error
 select public.wa_verify('ZZZZZZ', '+919999999999') as any_branch, public.wa_verify('ZZZZZZ', '+919999999999', 'falnir') as falnir;
 
--- 4. Switch "Verify on WhatsApp" ON for Falnir only (other branches stay off until their n8n Main is updated).
---    To enable another branch later, add a row with key 'verify_by_message' and value '1' for it.
+-- 4. Falnir: "Verify on WhatsApp" is the ONLY way to verify at checkout (no OTP button at all). Other branches stay unchanged.
+--    Values for the branch setting verify_by_message:  'only' = WhatsApp message only,  '1' = WhatsApp message AND OTP,
+--    missing = OTP only (as before). Falnir's OTP / SMS link stays configured, so 'only' can be changed back later.
 insert into public.branch_settings (branch_id, key, value)
-select b.id, 'verify_by_message', '1' from public.branches b where b.slug = 'falnir'
-on conflict (branch_id, key) do update set value = '1', updated_at = now();
+select b.id, 'verify_by_message', 'only' from public.branches b where b.slug = 'falnir'
+on conflict (branch_id, key) do update set value = 'only', updated_at = now();
 
 -- 5. (NOT needed any more.) Falnir and Kadri keep their OTP link: outside the 24 h window their OTP goes by SMS (MSG91) once
 --    an SMS template is configured (see docs/SMS_OTP_MSG91.md). Until then, customers who cannot get an OTP use the

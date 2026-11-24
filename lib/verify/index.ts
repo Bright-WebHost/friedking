@@ -48,7 +48,9 @@ export async function loadBranchVerifySettings(db: SupabaseClient, slug: string)
     /** MSG91 template id. When set, an OTP for a customer outside the 24 h WhatsApp window is sent by SMS instead of a WhatsApp template. */
     smsTemplateId: get('sms_template_id'),
     /** Per-branch switch for "Verify on WhatsApp" (branch_settings.verify_by_message = '1'). Off for a branch until its n8n Main is updated. */
-    verifyByMessage: get('verify_by_message') === '1',
+    verifyByMessage: ['1', 'only'].includes(get('verify_by_message')),
+    /** verify_by_message = 'only': the OTP is not offered at all for this branch; WhatsApp message is the only method. */
+    messageOnly: get('verify_by_message') === 'only',
     whatsappNumber: waNumber(get('whatsapp_number') || branch.phone || ''),
   }
 }
