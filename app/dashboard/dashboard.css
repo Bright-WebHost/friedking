@@ -65,18 +65,16 @@
   & .side-foot button, & .side-foot select { background: var(--navy2); color: #dccfcf; padding: 10px 11px; border-radius: 11px; font-size: 13px; font-weight: 600; text-align: left; border: 0; }
   & .side-foot button:hover { background: #3a2a2a; color: #fff; }
   & .roletag { font-size: 10px; font-weight: 800; letter-spacing: .6px; text-transform: uppercase; background: rgba(255,255,255,.12); padding: 4px 9px; border-radius: 999px; align-self: flex-start; color: #fff; }
-  & main { padding: 18px 20px 40px; min-width: 0; overflow-x: hidden; }
-  & .head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: -18px -20px 16px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40; }
+  & main { padding: 0 20px 40px; min-width: 0; overflow-x: hidden; }
+  & .head { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; margin: 0 -20px 16px; padding: 12px 20px; background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40; }
   & .head h1 { font-family: var(--head); font-size: 28px; font-weight: 800; margin: 0; text-transform: uppercase; letter-spacing: .01em; }
-  /* Branch name: always visible, in a colour that belongs to the branch (header badge + sidebar box). */
-  & .branchtag { background: var(--bc, var(--red)); color: #fff; font-family: var(--head); font-weight: 800; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 14px; border-radius: 999px; white-space: nowrap; box-shadow: 0 2px 8px rgb(0 0 0 / 22%); }
-  & .branchbox { margin: 12px 0 2px; padding: 10px 12px; border-radius: 12px; background: var(--bc, var(--red)); color: #fff; border: 2px solid rgb(255 255 255 / 45%); text-align: center; }
-  & .branchbox span { display: block; font-size: 10px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; opacity: .9; }
-  & .branchbox b { display: block; font-family: var(--head); font-size: 24px; line-height: 1.15; font-weight: 800; letter-spacing: .03em; text-transform: uppercase; margin-top: 2px; word-break: break-word; }
-  /* "Need help?" strip above the header (only when the branch has saved a help line). Header sticks right below it. */
-  & .helpbar { display: flex; align-items: center; justify-content: center; gap: 6px 16px; flex-wrap: nowrap; overflow: hidden; margin: -18px -20px 0; padding: 0 20px; height: 30px; box-sizing: border-box; background: var(--yellow); color: #1a1010; font-size: 12.5px; font-weight: 700; white-space: nowrap; position: sticky; top: 0; z-index: 41; }
-  & .helpbar a { color: inherit; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
-  & main.hashelp .head { margin-top: 0; top: 30px; }
+  /* Branch name: the pill in the header, filled with the branch's own colour so it is the first thing staff see. */
+  & .pilb.branch { background: var(--bc, var(--red)); color: #fff; font-family: var(--head); font-weight: 800; font-size: 16px; letter-spacing: .05em; text-transform: uppercase; padding: 6px 18px; box-shadow: 0 2px 8px rgb(0 0 0 / 22%); white-space: nowrap; }
+  /* "Need help?" strip at the very top (only when the branch has saved a help line). The header sticks right below it. */
+  & .helpbar { display: flex; align-items: center; justify-content: center; gap: 6px 18px; flex-wrap: nowrap; overflow: hidden; margin: 0 -20px; padding: 0 20px; height: 30px; box-sizing: border-box; background: var(--navy); color: #d9cfcf; font-size: 12.5px; font-weight: 600; white-space: nowrap; position: sticky; top: 0; z-index: 41; }
+  & .helpbar a { color: #fff; font-weight: 800; text-decoration: none; }
+  & .helpbar a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  & main.hashelp .head { top: 30px; }
   & .pills { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   & .pilb { font-size: 12px; font-weight: 700; padding: 6px 13px; border-radius: 999px; background: #f1efef; color: var(--muted); }
   & .pilb.ok { background: #e8f7ee; color: #1f8a4c; }
@@ -685,14 +683,13 @@
     & aside.open { transform: translateX(0); box-shadow: 18px 0 48px rgba(0,0,0,.4); }
     & .navdrawer-close { display: flex; position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; z-index: 2; align-items: center; justify-content: center; background: rgba(255,255,255,.2); color: #fff; border: none; border-radius: 9px; font-size: 16px; font-weight: 800; cursor: pointer; }
     & .navbackdrop { display: block; position: fixed; inset: 0; z-index: 110; background: rgba(10,8,8,.55); }
-    & main { padding: 14px 12px 20px; }
-    & .head { margin: -14px -12px 12px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    & main { padding: 0 12px 20px; }
+    & .head { margin: 0 -12px 12px; padding: 10px 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     & .head h1 { font-size: 18px; flex: 1; min-width: 0; }
     & .head .pills { gap: 4px; }
     & .head .pills .pilb:nth-child(n+3) { display: none; }
-    & .branchtag { font-size: 13px; padding: 5px 11px; }
-    & .helpbar { margin: -14px -12px 0; padding: 0 12px; font-size: 11.5px; gap: 4px 10px; }
-    & main.hashelp .head { margin: 0 -12px 12px; }
+    & .pilb.branch { font-size: 13px; padding: 5px 12px; }
+    & .helpbar { margin: 0 -12px; padding: 0 12px; font-size: 11.5px; gap: 4px 10px; }
     & .mobonly { display: flex !important; gap: 5px; margin-left: auto; }
     & .mobonly .btn.sm { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 9px; font-size: 14px; background: #fff; border: 1px solid var(--line); color: var(--ink); }
     & .stats { grid-template-columns: 1fr 1fr; gap: 9px; }
@@ -773,8 +770,9 @@
   /* ---------- tablets and phones ---------- */
   @media (max-width: 1024px) {
     & .shell { grid-template-columns: 200px 1fr; }
-    & main { padding: 16px 14px 40px; }
-    & .head { margin: -16px -14px 14px; padding: 10px 14px; }
+    & main { padding: 0 14px 40px; }
+    & .head { margin: 0 -14px 14px; padding: 10px 14px; }
+    & .helpbar { margin: 0 -14px; padding: 0 14px; }
   }
   @media (max-width: 860px) {
     & .shell { grid-template-columns: minmax(0, 1fr); }

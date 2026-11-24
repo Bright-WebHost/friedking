@@ -191,12 +191,6 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
             <div className="kicker">ORDER HUB</div>
           </div>
           <div className="checker" />
-          {branchLabel && (
-            <div className="branchbox" style={{ '--bc': branchTone } as React.CSSProperties} aria-label={`Branch: ${branchLabel}`}>
-              <span>You are in</span>
-              <b>📍 {branchLabel}</b>
-            </div>
-          )}
           <nav aria-label="Dashboard">
             {nav.map((s) => (
               <Link key={s.key} className={s.mobileOnly ? 'mobnav' : undefined} href={slug ? `/dashboard/${slug}/${s.key}` : '/dashboard'} aria-current={active?.key === s.key ? 'page' : undefined} onClick={() => setNavOpen(false)}>
@@ -227,9 +221,9 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
           )}
           <div className="head">
             <button id="mmenu" aria-label="Open menu" onClick={() => setNavOpen(true)}>☰</button>
-            {branchLabel && <span className="branchtag" style={{ '--bc': branchTone } as React.CSSProperties}>📍 {branchLabel}</span>}
             <h1>{active ? `${active.icon} ${active.label}` : 'Dashboard'}</h1>
             <div className="pills">
+              {branchLabel && <span className="pilb branch" style={{ '--bc': branchTone } as React.CSSProperties} title={meta?.branch.name}>📍 {branchLabel}</span>}
               <span className="pilb ok">● Live</span>
               <span className="pilb upd" title="Last time data was fetched">⟳ Updated {updatedAt ? istTime(updatedAt) : '…'}</span>
               {!soundOn && <button className="pilb warn" onClick={() => { enableSound(); chime() }}>🔕 Tap to enable sound</button>}
