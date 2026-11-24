@@ -5,7 +5,8 @@ import { findTable, openSession } from '@/lib/tables'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCustomerPhone } from '@/lib/customer/session'
 import { loyaltyOffer } from '@/lib/loyalty'
-import { calcTotals, normalizePhone } from '@/lib/utils'
+import { isOpenNow } from '@/lib/hours'
+import { calcTotals, formatTime, normalizePhone } from '@/lib/utils'
 import type { PlaceOrderPayload, PlacedOrder } from '@/lib/types'
 
 const MAX_QTY_PER_ITEM = 50
@@ -108,11 +109,15 @@ export async function POST(req: NextRequest) {
 
     const { data: branch } = await supabase
       .from('branches')
-      .select('id, name')
+      .select('id, name, opens_at, closes_at')
       .eq('slug', slug)
       .eq('is_active', true)
       .maybeSingle()
     if (!branch) return bad('Branch not found', 404)
+    // Delivery and takeaway are only taken while the branch is open (the WhatsApp bot does the same). Dine-in guests are already at a table.
+    if (!isDineIn && !isOpenNow(branch.opens_at as string | null, branch.closes_at as string | null)) {
+      return bad(`We're closed right now. We're open ${formatTime(branch.opens_at as string | null)} to ${formatTime(branch.closes_at as string | null)}. Please order again when we open.`, 409)
+    }
 
     // Authoritative names + prices.
     const { data: dbItems, error: itemsErr } = await supabase

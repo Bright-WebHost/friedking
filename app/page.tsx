@@ -18,6 +18,7 @@ import { optimizeImageUrl } from '@/lib/image'
 import type {
   Branch, CartItem, MenuCategory, MenuItem, OrderType, PaymentMethod, PlaceOrderPayload, PlacedOrder,
 } from '@/lib/types'
+import { isOpenNow } from '@/lib/hours'
 import { calcTotals, formatPrice, formatTime, normalizePhone } from '@/lib/utils'
 
 type Screen = 'branches' | 'menu' | 'checkout' | 'confirmed' | 'table'
@@ -100,6 +101,10 @@ export default function CustomerPage() {
   const [notes, setNotes] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  // Re-check opening hours every minute so the page switches to "closed" / "open" on its own.
+  const [, setMinuteTick] = useState(0)
+  useEffect(() => { const t = setInterval(() => setMinuteTick((n) => n + 1), 60000); return () => clearInterval(t) }, [])
+  const closedNow = !!branch && !isOpenNow(branch.opensAt, branch.closesAt)
   const [placed, setPlaced] = useState<PlacedOrder | null>(null)
   const idempotencyKey = useRef<string>('')
   // Set when the page was opened from the WhatsApp bot's link: name and number come from WhatsApp and are locked.
@@ -703,9 +708,15 @@ export default function CustomerPage() {
             </p>
           )}
 
+          {closedNow && orderType !== 'dine-in' && (
+            <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0" /> We&apos;re closed right now. We&apos;re open {formatTime(branch?.opensAt ?? null)} to {formatTime(branch?.closesAt ?? null)}. You can place your order when we open.
+            </p>
+          )}
+
           <button
             onClick={placeOrder}
-            disabled={submitting || cart.length === 0 || minOrderShort > 0}
+            disabled={submitting || cart.length === 0 || minOrderShort > 0 || (closedNow && orderType !== 'dine-in')}
             className="flex w-full items-center justify-center gap-2 rounded-[14px] bg-fk-red py-4 text-base font-bold text-white shadow-md shadow-red-500/20 transition hover:bg-fk-red-dark disabled:opacity-60"
           >
             {submitting ? (<><Loader2 className="h-4 w-4 animate-spin" /> Placing order</>) : (<>{orderType === 'dine-in' ? 'Send to kitchen' : 'Place order'} · {formatPrice(grandTotalPaise)}</>)}
@@ -767,6 +778,11 @@ export default function CustomerPage() {
               {branch?.opensAt && branch?.closesAt && (
                 <p className="mt-1 flex items-center gap-1 text-[13px] text-white/85">
                   <Clock className="h-3.5 w-3.5 shrink-0" /> {formatTime(branch.opensAt)} to {formatTime(branch.closesAt)}
+                </p>
+              )}
+              {closedNow && tableNo === null && (
+                <p className="mt-2 rounded-lg bg-black/30 px-3 py-2 text-[13px] font-semibold text-white">
+                  🕒 Closed right now. We open at {formatTime(branch?.opensAt ?? null)}. You can browse the menu, but orders can&apos;t be placed until then.
                 </p>
               )}
               {tableNo !== null ? (
