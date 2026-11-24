@@ -28,6 +28,8 @@ export const SETTING_DEFAULTS = {
   blast_template: 'friedking_promo_en',
   blast_monthly_limit: '1000',
   whatsapp_number: '',
+  // Help line shown in the strip above the dashboard header (10-digit mobile). Empty = no strip.
+  help_phone: '',
 }
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS

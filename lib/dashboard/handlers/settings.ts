@@ -24,6 +24,12 @@ function cleanSetting(key: string, raw: unknown): string {
     return [...new Set(nums)].join(', ')
   }
   if (key === 'shift_report_enabled') return v === 'true' ? 'true' : 'false'
+  if (key === 'help_phone') {
+    if (!v) return ''
+    const d = v.replace(/\D/g, '').slice(-10)
+    if (!/^[6-9][0-9]{9}$/.test(d)) throw new HttpError(400, 'Help line must be a valid 10-digit mobile number')
+    return d
+  }
   return v
 }
 

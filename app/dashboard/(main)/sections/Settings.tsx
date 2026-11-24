@@ -61,6 +61,7 @@ export default function Settings() {
         {field('Address', <input className="f" value={br.address} onChange={setBr('address')} />)}
         {field('Phone', <input className="f" value={br.phone} onChange={setBr('phone')} />)}
         {field('WhatsApp number (table QR codes and invoices)', <input className="f" inputMode="numeric" value={st.whatsapp_number} onChange={setSet('whatsapp_number')} placeholder="e.g. 7337687522" />)}
+        {field('Help line (the "Need help?" strip at the top of the dashboard; leave empty to hide it)', <input className="f" inputMode="numeric" maxLength={14} value={st.help_phone} onChange={setSet('help_phone')} placeholder="10-digit mobile, e.g. 9876543210" />)}
       </div>
 
       <details className="panel fold"><summary><h3>Category images</h3><span className="foldhint">{data.categories.length} categories · tap to open</span></summary><p className="asub" style={{ marginTop: -6 }}>Shown as the round category icons on the ordering page. Leave blank to keep the default.</p>

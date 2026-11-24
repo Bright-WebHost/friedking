@@ -12,6 +12,19 @@ import NewOrderAlert from './NewOrderAlert'
 
 type BranchOpt = { id: string; name: string; slug: string }
 
+/** "Fried King Falnir" -> "Falnir" (the brand is already in the sidebar logo). */
+const shortBranch = (name: string) => name.replace(/^fried\s*king\s*/i, '').trim() || name
+
+/** One colour per branch so staff never mistake one dashboard for another. Unknown branches get a stable colour from their slug. */
+const BRANCH_COLORS: Record<string, string> = { pandeshwar: '#ec1c23', falnir: '#1d6fd1', kadri: '#1f8a4c' }
+const FALLBACK_COLORS = ['#7b3fe4', '#d97706', '#0e8a8a', '#c2185b']
+function branchColor(slug: string) {
+  if (BRANCH_COLORS[slug]) return BRANCH_COLORS[slug]
+  let h = 0
+  for (const ch of slug) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return FALLBACK_COLORS[h % FALLBACK_COLORS.length]
+}
+
 // ---------------------------------------------------------------- sound (Oceana's chime + siren)
 let audio: AudioContext | null = null
 function beep(freqs: number[], type: OscillatorType, gap: number, len: number, vol: number) {
@@ -147,6 +160,14 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
     } catch { /* unsupported */ }
   }, [])
 
+  // Which branch am I in? Shown big in the header and the sidebar, and in the browser tab title.
+  const branchLabel = shortBranch(meta?.branch.name ?? slug)
+  const branchTone = branchColor(meta?.branch.slug ?? slug)
+  const helpPhone = (meta?.settings?.help_phone ?? '').replace(/\D/g, '')
+  useEffect(() => {
+    if (branchLabel) document.title = `${branchLabel} · Fried King Dashboard`
+  }, [branchLabel])
+
   return (
     <div className="fkd">
       {gate && (
@@ -170,6 +191,12 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
             <div className="kicker">ORDER HUB</div>
           </div>
           <div className="checker" />
+          {branchLabel && (
+            <div className="branchbox" style={{ '--bc': branchTone } as React.CSSProperties} aria-label={`Branch: ${branchLabel}`}>
+              <span>You are in</span>
+              <b>📍 {branchLabel}</b>
+            </div>
+          )}
           <nav aria-label="Dashboard">
             {nav.map((s) => (
               <Link key={s.key} className={s.mobileOnly ? 'mobnav' : undefined} href={slug ? `/dashboard/${slug}/${s.key}` : '/dashboard'} aria-current={active?.key === s.key ? 'page' : undefined} onClick={() => setNavOpen(false)}>
@@ -190,14 +217,21 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
           </div>
         </aside>
         {navOpen && <div className="navbackdrop" onClick={() => setNavOpen(false)} />}
-        <main>
+        <main className={helpPhone ? 'hashelp' : undefined}>
+          {helpPhone && (
+            <div className="helpbar" role="note">
+              <span>Need help?</span>
+              <a href={`tel:+91${helpPhone}`}>📞 Call +91 {helpPhone.slice(0, 5)} {helpPhone.slice(5)}</a>
+              <a href={`https://wa.me/91${helpPhone}`} target="_blank" rel="noopener noreferrer">💬 WhatsApp</a>
+            </div>
+          )}
           <div className="head">
             <button id="mmenu" aria-label="Open menu" onClick={() => setNavOpen(true)}>☰</button>
+            {branchLabel && <span className="branchtag" style={{ '--bc': branchTone } as React.CSSProperties}>📍 {branchLabel}</span>}
             <h1>{active ? `${active.icon} ${active.label}` : 'Dashboard'}</h1>
             <div className="pills">
               <span className="pilb ok">● Live</span>
               <span className="pilb upd" title="Last time data was fetched">⟳ Updated {updatedAt ? istTime(updatedAt) : '…'}</span>
-              {meta && <span className="pilb">{meta.branch.name}</span>}
               {!soundOn && <button className="pilb warn" onClick={() => { enableSound(); chime() }}>🔕 Tap to enable sound</button>}
             </div>
             <div className="mobonly">
