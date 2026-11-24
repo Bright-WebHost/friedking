@@ -38,13 +38,15 @@ export async function loadBranchVerifySettings(db: SupabaseClient, slug: string)
   const { data: branch } = await db.from('branches').select('id, slug, name, phone').eq('slug', slug).eq('is_active', true).maybeSingle()
   if (!branch) return null
   const { data: rows } = await db.from('branch_settings').select('key, value').eq('branch_id', branch.id)
-    .in('key', ['otp_webhook_url', 'otp_template', 'otp_template_lang', 'whatsapp_number'])
+    .in('key', ['otp_webhook_url', 'otp_template', 'otp_template_lang', 'whatsapp_number', 'sms_template_id'])
   const get = (k: string) => String(rows?.find((r) => r.key === k)?.value ?? '').trim()
   return {
     branch: branch as { id: string; slug: string; name: string; phone: string | null },
     otpWebhookUrl: get('otp_webhook_url'),
     otpTemplate: get('otp_template') || 'friedking_otp',
     otpTemplateLang: get('otp_template_lang') || 'en',
+    /** MSG91 template id. When set, an OTP for a customer outside the 24 h WhatsApp window is sent by SMS instead of a WhatsApp template. */
+    smsTemplateId: get('sms_template_id'),
     whatsappNumber: waNumber(get('whatsapp_number') || branch.phone || ''),
   }
 }

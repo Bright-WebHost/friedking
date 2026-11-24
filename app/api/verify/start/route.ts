@@ -104,21 +104,24 @@ export async function POST(req: NextRequest) {
     if (error || !row) throw new Error(error?.message ?? 'insert failed')
 
     let sent = false
+    let via = 'whatsapp'
     try {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp, template: cfg.otpTemplate, lang: cfg.otpTemplateLang }),
+        // n8n sends a normal WhatsApp text inside the 24 h window; outside it, an SMS when smsTemplateId is set, else the WhatsApp template.
+        body: JSON.stringify({ phone, otp, template: cfg.otpTemplate, lang: cfg.otpTemplateLang, smsTemplateId: cfg.smsTemplateId || undefined }),
         signal: AbortSignal.timeout(12000),
       })
       const out = await res.json().catch(() => ({}))
       sent = res.ok && out.ok === true
+      if (out.via === 'sms') via = 'sms'
     } catch { /* treated as not sent */ }
     if (!sent) {
       await db.from('wa_verifications').delete().eq('id', row.id)
-      return fail('We could not send the OTP on WhatsApp. Check the number, or verify by WhatsApp message instead.', 502)
+      return fail('We could not send the OTP. Check the number, or verify by WhatsApp message instead.', 502)
     }
-    return NextResponse.json({ enabled: true, mode: 'otp', secret, phoneMasked: `+91 ${phone.slice(3, 5)}•••••${phone.slice(-3)}` })
+    return NextResponse.json({ enabled: true, mode: 'otp', via, secret, phoneMasked: `+91 ${phone.slice(3, 5)}•••••${phone.slice(-3)}` })
   } catch (e) {
     console.error('[verify/start]', e instanceof Error ? e.message : e)
     return fail('Could not start the verification. Try again.', 500)

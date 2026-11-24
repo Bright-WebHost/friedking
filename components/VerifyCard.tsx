@@ -37,6 +37,7 @@ export default function VerifyCard({ onChange, linkToken, fixedMasked, useSessio
   const [phone, setPhone] = useState('')
   const [secret, setSecret] = useState('')
   const [sentTo, setSentTo] = useState<string | null>(null)
+  const [sentVia, setSentVia] = useState<'whatsapp' | 'sms'>('whatsapp')
   const [otp, setOtp] = useState('')
   const [verified, setVerified] = useState<null | { how: Method; masked: string | null }>(null)
   const [busy, setBusy] = useState(false)
@@ -80,7 +81,7 @@ export default function VerifyCard({ onChange, linkToken, fixedMasked, useSessio
       const d = await json(res)
       if (!res.ok) { setErr(d.message ?? 'Could not send the OTP.'); return }
       if (!d.enabled) { setCaps({ enabled: false, otp: false, message: false }); report.current({ enabled: false, secret: '', verified: false }); return }
-      setSecret(d.secret); setSentTo(d.phoneMasked); setOtp(''); setWait(30)
+      setSecret(d.secret); setSentTo(d.phoneMasked); setSentVia(d.via === 'sms' ? 'sms' : 'whatsapp'); setOtp(''); setWait(30)
       report.current({ enabled: true, secret: d.secret, verified: false })
     } catch {
       setErr('Network problem. Please try again.')
@@ -210,11 +211,11 @@ export default function VerifyCard({ onChange, linkToken, fixedMasked, useSessio
   // ── OTP UI ──────────────────────────────────────────────────────────────────
   return (
     <div className="rounded-xl border border-fk-line bg-white px-4 py-3">
-      <p className="text-sm font-bold">Verify with a WhatsApp OTP</p>
+      <p className="text-sm font-bold">Verify with an OTP</p>
       {!sentTo ? (
         <>
           {fixed ? (
-            <p className="mt-1 text-sm text-fk-muted">We will send an OTP to your WhatsApp{fixedMasked ? ` (${fixedMasked})` : ''}.</p>
+            <p className="mt-1 text-sm text-fk-muted">We will send an OTP to your number{fixedMasked ? ` (${fixedMasked})` : ''}.</p>
           ) : (
             <div className="mt-3 flex items-center rounded-xl border border-fk-line bg-white focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
               <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
@@ -226,12 +227,12 @@ export default function VerifyCard({ onChange, linkToken, fixedMasked, useSessio
             </div>
           )}
           <button onClick={send} disabled={busy || (!fixed && phone.length !== 10)} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-[#25d366] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">
-            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Send OTP on WhatsApp
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />} Send OTP
           </button>
         </>
       ) : (
         <>
-          <p className="mt-1 text-sm text-fk-muted">We sent a 6-digit OTP to your WhatsApp ({sentTo}). Enter it below.</p>
+          <p className="mt-1 text-sm text-fk-muted">We sent a 6-digit OTP {sentVia === 'sms' ? 'by SMS' : 'on WhatsApp'} to {sentTo}. Enter it below.</p>
           <div className="mt-3 flex gap-2">
             <input
               className="w-full rounded-xl border border-fk-line bg-white px-4 py-3 text-center text-lg font-bold tracking-[0.4em] outline-none focus:border-fk-red focus:ring-1 focus:ring-fk-red"

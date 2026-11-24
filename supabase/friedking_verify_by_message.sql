@@ -37,9 +37,8 @@ grant execute on function public.wa_verify(text, text, text) to service_role;
 -- 3. Check: both lines should return false (no such code) without an error
 select public.wa_verify('ZZZZZZ', '+919999999999') as any_branch, public.wa_verify('ZZZZZZ', '+919999999999', 'falnir') as falnir;
 
--- 4. OPTIONAL, recommended for Falnir and Kadri while they cannot create WhatsApp templates:
---    removes their OTP link so the checkout offers ONLY "Verify on WhatsApp" there (no failing "Send OTP" button).
---    Later, when templates are approved, Claude can put the links back. Pandeshwar is not touched.
-delete from public.branch_settings
- where key = 'otp_webhook_url'
-   and branch_id in (select id from public.branches where slug in ('falnir', 'kadri'));
+-- 4. (NOT needed any more.) Falnir and Kadri keep their OTP link: outside the 24 h window their OTP goes by SMS (MSG91) once
+--    an SMS template is configured (see docs/SMS_OTP_MSG91.md). Until then, customers who cannot get an OTP use the
+--    "Verify by WhatsApp message" option on the same card. Only if you ever want a branch to offer ONLY the message option:
+--    delete from public.branch_settings where key = 'otp_webhook_url'
+--     and branch_id in (select id from public.branches where slug = 'falnir');
