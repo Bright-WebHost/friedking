@@ -3,32 +3,78 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getCustomerPhone } from '@/lib/customer/session'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { normalizePhone } from '@/lib/utils'
-import { verificationEnabled } from '@/lib/verify'
+import { branchSlugOf, loadBranchVerifySettings, messageVerificationInstalled, verificationEnabled } from '@/lib/verify'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 20
 
 const fail = (message: string, status = 400) => NextResponse.json({ message }, { status })
 
-/** GET -> { enabled }: whether OTP verification is installed (checkout shows the OTP card or the old field). */
-export async function GET() {
+// No 0/O/1/I: the code is read off a screen. Must stay 6 characters of A-Z0-9 (the WhatsApp bot matches exactly that).
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+const newCode = () => Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CODE_ALPHABET.length)]).join('')
+
+/**
+ * GET ?branch=<slug> -> { enabled, otp, message }
+ *  enabled: verification is installed (checkout shows the verification card, or the old plain field when false)
+ *  otp:     this branch can send an OTP on WhatsApp (its Send OTP link is set; needs an approved template outside the 24 h window)
+ *  message: this branch can verify by the customer sending a WhatsApp message (needs no template)
+ */
+export async function GET(req: NextRequest) {
   try {
-    return NextResponse.json({ enabled: await verificationEnabled(createAdminClient()) }, { headers: { 'Cache-Control': 'no-store' } })
+    const db = createAdminClient()
+    if (!(await verificationEnabled(db))) return NextResponse.json({ enabled: false }, { headers: { 'Cache-Control': 'no-store' } })
+    const cfg = await loadBranchVerifySettings(db, branchSlugOf(req.nextUrl.searchParams.get('branch')))
+    const message = !!cfg?.whatsappNumber && (await messageVerificationInstalled(db))
+    return NextResponse.json({ enabled: true, otp: !!cfg?.otpWebhookUrl, message }, { headers: { 'Cache-Control': 'no-store' } })
   } catch {
     return NextResponse.json({ enabled: false })
   }
 }
 
 /**
- * POST { phone? , linkToken?, useSession? } -> sends a 6-digit OTP to that WhatsApp number (through n8n)
- * and returns { secret, phoneMasked }. The number comes from the WhatsApp link or the login when there is one.
+ * POST { branch, mode?: 'otp' | 'message', phone?, linkToken?, useSession? }
+ *  mode 'otp' (default): sends a 6-digit OTP to that WhatsApp number (through the branch's n8n Send OTP) -> { secret, phoneMasked }
+ *  mode 'message':       no number needed; returns a short code and a wa.me link. The customer sends "VERIFY <code>" to the branch
+ *                        number, the bot proves the number, and the browser polls /api/verify/status -> { secret, code, waLink, whatsapp }
  */
 export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}))
   try {
     const db = createAdminClient()
     if (!(await verificationEnabled(db))) return NextResponse.json({ enabled: false })
+    const cfg = await loadBranchVerifySettings(db, branchSlugOf(b.branch))
+    if (!cfg) return fail('This branch is not available.', 404)
 
+    const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim().slice(0, 64) || null
+    const hourAgo = new Date(Date.now() - 3600000).toISOString()
+
+    // ── Verify by sending a WhatsApp message (no template) ───────────────────────
+    if (b.mode === 'message') {
+      if (!cfg.whatsappNumber) return fail('WhatsApp verification is not set up for this branch yet.', 503)
+      if (!(await messageVerificationInstalled(db))) return fail('WhatsApp verification is not available yet. Please try again later.', 503)
+      if (ip) {
+        const { count } = await db.from('wa_verifications').select('id', { count: 'exact', head: true }).eq('ip', ip).gt('created_at', hourAgo)
+        if ((count ?? 0) >= 15) return fail('Too many attempts. Try again later.', 429)
+      }
+      const secret = randomBytes(24).toString('hex')
+      let code = ''
+      for (let i = 0; i < 6 && !code; i++) {
+        const c = newCode()
+        const { data: clash } = await db.from('wa_verifications').select('id').eq('code', c).is('verified_at', null).gt('created_at', new Date(Date.now() - 16 * 60000).toISOString()).limit(1)
+        if (!clash?.length) code = c
+      }
+      if (!code) return fail('Could not create a code. Try again.', 500)
+      const { error } = await db.from('wa_verifications').insert({ secret, code, ip, branch_id: cfg.branch.id })
+      if (error) throw new Error(error.message)
+      return NextResponse.json({
+        enabled: true, mode: 'message', secret, code,
+        whatsapp: cfg.whatsappNumber,
+        waLink: `https://wa.me/${cfg.whatsappNumber}?text=${encodeURIComponent(`VERIFY ${code}`)}`,
+      })
+    }
+
+    // ── Verify with a WhatsApp OTP ───────────────────────────────────────────────
     let phone: string | null = null
     const token = String(b.linkToken ?? '')
     if (/^[0-9a-f]{32}$/.test(token)) {
@@ -40,8 +86,6 @@ export async function POST(req: NextRequest) {
     if (!phone) return fail('Enter a valid 10-digit mobile number.')
 
     // Limits: stops anyone from using the form to spam a number or run up WhatsApp costs.
-    const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim().slice(0, 64) || null
-    const hourAgo = new Date(Date.now() - 3600000).toISOString()
     const { data: recent } = await db.from('wa_verifications').select('created_at').eq('phone', phone).gt('created_at', hourAgo).order('created_at', { ascending: false })
     if (recent?.length && Date.now() - new Date(recent[0].created_at).getTime() < 30000) return fail('Please wait 30 seconds before asking for another OTP.', 429)
     if ((recent?.length ?? 0) >= 5) return fail('Too many OTP requests for this number. Try again in an hour.', 429)
@@ -50,10 +94,9 @@ export async function POST(req: NextRequest) {
       if ((count ?? 0) >= 15) return fail('Too many OTP requests. Try again later.', 429)
     }
 
-    const { data: cfg } = await db.from('branch_settings').select('key, value').in('key', ['otp_webhook_url', 'otp_template', 'otp_template_lang'])
-    const setting = (k: string) => String(cfg?.find((r) => r.key === k)?.value ?? '')
-    const url = setting('otp_webhook_url')
-    if (!url) return fail('The OTP service is not connected yet. Please try again later.', 503)
+    // This branch's own Send OTP link (each branch has its own WhatsApp number, so its own workflow).
+    const url = cfg.otpWebhookUrl
+    if (!url) return fail('OTP is not available for this branch. Please verify by WhatsApp message instead.', 503)
 
     const otp = String(randomInt(0, 1000000)).padStart(6, '0')
     const secret = randomBytes(24).toString('hex')
@@ -65,7 +108,7 @@ export async function POST(req: NextRequest) {
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp, template: setting('otp_template') || 'friedking_otp', lang: setting('otp_template_lang') || 'en' }),
+        body: JSON.stringify({ phone, otp, template: cfg.otpTemplate, lang: cfg.otpTemplateLang }),
         signal: AbortSignal.timeout(12000),
       })
       const out = await res.json().catch(() => ({}))
@@ -73,11 +116,11 @@ export async function POST(req: NextRequest) {
     } catch { /* treated as not sent */ }
     if (!sent) {
       await db.from('wa_verifications').delete().eq('id', row.id)
-      return fail('We could not send the OTP on WhatsApp. Check the number and try again.', 502)
+      return fail('We could not send the OTP on WhatsApp. Check the number, or verify by WhatsApp message instead.', 502)
     }
-    return NextResponse.json({ enabled: true, secret, phoneMasked: `+91 ${phone.slice(3, 5)}•••••${phone.slice(-3)}` })
+    return NextResponse.json({ enabled: true, mode: 'otp', secret, phoneMasked: `+91 ${phone.slice(3, 5)}•••••${phone.slice(-3)}` })
   } catch (e) {
     console.error('[verify/start]', e instanceof Error ? e.message : e)
-    return fail('Could not send the OTP. Try again.', 500)
+    return fail('Could not start the verification. Try again.', 500)
   }
 }

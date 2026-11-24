@@ -16,7 +16,7 @@ export interface Account {
 const when = (t: string) => new Date(t).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Kolkata' })
 
 /** Slide-over: log in with a WhatsApp OTP, then see past orders and manage saved addresses. */
-export default function AccountPanel({ account, onClose, onChanged }: { account: Account; onClose: () => void; onChanged: () => void }) {
+export default function AccountPanel({ account, branch, onClose, onChanged }: { account: Account; branch?: string | null; onClose: () => void; onChanged: () => void }) {
   const [msg, setMsg] = useState<string | null>(null)
   const [newAddr, setNewAddr] = useState('')
 
@@ -42,7 +42,7 @@ export default function AccountPanel({ account, onClose, onChanged }: { account:
           {!account.loggedIn ? (
             <>
               <p className="text-sm text-fk-muted">Log in with a WhatsApp OTP to see your past orders and save delivery addresses.</p>
-              <VerifyCard onChange={onVerify} />
+              <VerifyCard branch={branch} onChange={onVerify} />
             </>
           ) : (
             <>

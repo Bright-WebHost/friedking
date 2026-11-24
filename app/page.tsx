@@ -580,7 +580,7 @@ export default function CustomerPage() {
               {(!linked || !linked.name) && (
                 <input className={input} placeholder="Name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
               )}
-              {!linked && tableNo === null && !whatsappLinkContext && <VerifyCard key={verifyKey} linkToken={null} useSession={account.loggedIn} fixedMasked={account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
+              {!linked && tableNo === null && !whatsappLinkContext && <VerifyCard key={verifyKey} branch={branch?.slug} linkToken={null} useSession={account.loggedIn} fixedMasked={account.loggedIn ? account.phoneMasked : null} onChange={(v) => { setVs(v); setVsLoaded(true) }} />}
               {!linked && tableNo === null && !whatsappLinkContext && vsLoaded && !vs.enabled && <div className="flex items-center rounded-xl border border-fk-line bg-white transition focus-within:border-fk-red focus-within:ring-1 focus-within:ring-fk-red">
                 <span className="pl-4 text-base font-medium text-fk-muted sm:text-sm">+91</span>
                 <input
@@ -1058,7 +1058,7 @@ export default function CustomerPage() {
         />
       )}
       {celebrate && <Celebration onDone={() => setCelebrate(false)} />}
-      {accountOpen && <AccountPanel account={account} onClose={() => setAccountOpen(false)} onChanged={loadAccount} />}
+      {accountOpen && <AccountPanel account={account} branch={branch?.slug} onClose={() => setAccountOpen(false)} onChanged={loadAccount} />}
       <LoopdotFooter />
     </div>
   )
