@@ -69,7 +69,7 @@ Column names that are easy to get wrong:
 - `order_events`: outbox for n8n. `status` enum pending/claimed/done/failed, `event_type`, `payload` jsonb
 - `customers` is unique on `(branch_id, phone)`
 
-Branches: Pandeshwar (branch id `a1b2c3d4-0001-0001-0001-000000000001`, the original) and Falnir (created 2026-11-23 as a copy of Pandeshwar with `supabase/friedking_new_branch_template.sql`, first as `friedking_attavar_branch.sql` + `friedking_attavar_to_falnir.sql`). Kadri is still to come. UUIDs must be valid hex.
+Branches: Pandeshwar (branch id `a1b2c3d4-0001-0001-0001-000000000001`, the original, 9742175222), Falnir (7337687522) and Kadri (7090390919). Falnir and Kadri were created 2026-11-23 as copies of Pandeshwar with `supabase/friedking_new_branch_template.sql` (Falnir first as `friedking_attavar_branch.sql` + `friedking_attavar_to_falnir.sql`). UUIDs must be valid hex.
 
 ## Rules to keep
 
@@ -133,7 +133,7 @@ Not done yet:
 - Bot: table QR scans ("Hi, I'm at Table 3") call `open_table_session`; a customer with an open table gets their WhatsApp orders attached to it as dine-in. The old `Dine-In & Dispatch`, `Table Close`, `Rider Dispatch`, `Send Invoice` and `PWA Order Receiver` workflows are still Oceana copies with a placeholder database and stay inactive. The old `Fried King | Status Notifier` is superseded by `Order Events` and stays inactive. Rider "Payment collected" button is a stub.
 - No phone verification at checkout (OTP functions exist, not called). No item variants UI.
 - n8n workflows and the YCloud connection (pending on the client and another developer).
-- Falnir (7337687522): data copied and dashboard ready; its YCloud setup is pending and its n8n copies (`Fried King Falnir | ...`) are inactive until then. Blast Sender is not branch-aware (sends from Pandeshwar's number) and `Chat Replies` on Pandeshwar is inactive on purpose; neither is in use. Kadri is not created yet.
+- Falnir is connected to YCloud and working (2026-11-24): n8n `Fried King Falnir | Main / Order Events / Send OTP` are active, `Chat Replies` and `Shift Report` stay off. Kadri has the same workflows (`Fried King Kadri | ...`) active but its YCloud webhook is not added yet. Every branch needs its OWN webhook endpoint in YCloud (events: inbound_message.received and message.updated) because YCloud sends every number's events to every endpoint; each Main ignores messages not addressed to its own number (guard at the top of `Extract Message ID`). Blast Sender is not branch-aware (sends from Pandeshwar's number) and `Chat Replies` is inactive on purpose; neither is in use.
 
 Open questions for the client (do not guess): delivery rules per branch.
 
