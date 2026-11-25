@@ -66,7 +66,7 @@ export async function checkMp4(file: File): Promise<Mp4Report> {
   if (avcC >= 0) {
     const p = moov[avcC + 5]
     profile = p === 66 ? 'Baseline' : p === 77 ? 'Main' : p === 100 ? 'High' : `profile ${p}`
-    if (p > 77) warnings.push(`H.264 ${profile} profile: some phones show "something is wrong with the video file". Main or Baseline is safest.`)
+    // No warning for High profile: tested 2026-11-25, a High-profile 478×850 video played fine on WhatsApp.
   }
 
   const hasAudio = has('soun') >= 0

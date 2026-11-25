@@ -86,7 +86,6 @@ export default function Blast() {
       const report = await checkMp4(f).catch(() => null)
       setVideoReport(report)
       if (report?.errors.length) { toast('This video will not work on WhatsApp: see the notes below'); return }
-      if (report?.warnings.length && !window.confirm(`This video may not play on some phones:\n\n• ${report.warnings.join('\n• ')}\n\nConverting it first is safer (see "How to fix a video" below). Upload anyway?`)) return
       // Too big for a normal request, so it goes straight to storage with a one-time link.
       const t = await api.post<{ path: string; token: string; url: string }>('blast', 'videoUploadUrl')
       const up = await createClient().storage.from('menu').uploadToSignedUrl(t.path, t.token, f, { contentType: 'video/mp4' })
@@ -139,7 +138,7 @@ export default function Blast() {
             <label className="btn" style={{ width: 'auto', padding: '10px 16px', cursor: 'pointer', height: 'fit-content' }}>{uploading ? 'Uploading…' : 'Upload video'}<input type="file" hidden accept="video/mp4" onChange={(e) => { void uploadVideo(e.target.files?.[0]); e.target.value = '' }} /></label>
           </div>
           {videoReport && <div className={videoReport.errors.length ? 'err' : videoReport.warnings.length ? 'note' : 'selinfo'} style={{ margin: '8px 0' }}>
-            <div style={{ fontWeight: 600 }}>{videoReport.errors.length ? '⛔ This video will not work on WhatsApp' : videoReport.warnings.length ? '⚠ This video may not play on some phones' : '✓ Video looks good for WhatsApp'}</div>
+            <div style={{ fontWeight: 600 }}>{videoReport.errors.length ? '⛔ This video will not work on WhatsApp' : videoReport.warnings.length ? '✓ Uploaded. Tip: send a test to your own number first' : '✓ Video looks good for WhatsApp'}</div>
             <div style={{ fontSize: 12, marginTop: 2 }}>{videoReport.info}</div>
             {[...videoReport.errors, ...videoReport.warnings].map((m) => <div key={m} style={{ fontSize: 13, marginTop: 4 }}>• {m}</div>)}
           </div>}
