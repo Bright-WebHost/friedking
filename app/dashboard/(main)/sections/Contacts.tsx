@@ -48,14 +48,21 @@ export default function Contacts() {
 
   const doImport = async (text: string) => {
     try {
-      const r = await api.post<{ phones: string[] }>('contacts', 'import', { text })
+      const r = await api.post<{ phones: string[]; added: number; withName: number; named: number }>('contacts', 'import', { text })
       setImported(r.phones.length); setPaste('')
       setPick((p) => new Set([...p, ...r.phones]))
-      toast(`${r.phones.length} numbers added and selected`)
+      const noName = r.phones.length - r.withName
+      toast(`${r.phones.length} numbers selected (${r.added} new${r.named ? `, ${r.named} names filled in` : ''})${noName ? `. ${noName} without a name will get "Hi there"` : ''}`)
       void reload()
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not import') }
   }
   const readFile = (f: File | undefined) => { if (f) void f.text().then(doImport) }
+  const editName = async (c: DCustomer) => {
+    const name = window.prompt(`Name for ${phoneShort(c.phone)} (used in promotions as "Hi <name>")`, c.name ?? '')
+    if (name === null) return
+    try { await api.post('contacts', 'setName', { phone: c.phone, name }); toast('Name saved'); void reload() }
+    catch (e) { toast(e instanceof Error ? e.message : 'Could not save the name') }
+  }
 
   return (
     <section>
@@ -66,10 +73,10 @@ export default function Contacts() {
         <div className="stat o"><span>Opted Out</span><b>{data.customers.filter((c) => c.opted_out).length}</b></div>
       </div>
       <div className={`drop ${drag ? 'on' : ''}`} onDragOver={(e) => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); readFile(e.dataTransfer.files[0]) }}>
-        <b style={{ color: 'var(--ink)' }}>Add numbers</b><br />Drop a CSV here, or paste numbers below (one per line, or comma separated)
+        <b style={{ color: 'var(--ink)' }}>Add numbers</b><br />Drop a CSV here, or paste below: one contact per line as <b>Name, number</b> (the name is used in promotions as &quot;Hi Name&quot;). Numbers without a name get &quot;Hi there&quot;.
         <div style={{ marginTop: 12 }}><label className="btn sm ghost" style={{ display: 'inline-block', cursor: 'pointer' }}>Choose CSV<input type="file" accept=".csv,.txt" hidden onChange={(e) => readFile(e.target.files?.[0])} /></label></div>
       </div>
-      <textarea className="f" rows={3} style={{ marginTop: 12 }} placeholder="98450 12345, 77952 40605 …" value={paste} onChange={(e) => setPaste(e.target.value)} />
+      <textarea className="f" rows={3} style={{ marginTop: 12 }} placeholder={'Shahil, 77952 40605\nRiya, 98450 12345'} value={paste} onChange={(e) => setPaste(e.target.value)} />
       <button className="btn sm" onClick={() => void doImport(paste)}>Add to contacts</button>
       {imported != null && <div className="stat" style={{ padding: '12px 16px', marginTop: 10, display: 'inline-block' }}><span>Imported</span><b>{imported}</b></div>}
 
@@ -90,7 +97,7 @@ export default function Contacts() {
       <div className="tblwrap"><table><thead><tr><th style={{ width: 38 }} /><th>Number</th><th>Name</th><th>Orders</th><th>Last order</th></tr></thead><tbody>
         {rows.length ? rows.slice(0, 400).map((c) => <tr key={c.id}>
           <td><input type="checkbox" className="cbox" disabled={c.opted_out} checked={pick.has(c.phone)} onChange={(e) => { const n = new Set(pick); if (e.target.checked) n.add(c.phone); else n.delete(c.phone); setPick(n) }} /></td>
-          <td>{phoneShort(c.phone)}</td><td>{c.name || '—'}</td><td>{c.total_orders}</td>
+          <td>{phoneShort(c.phone)}</td><td><button title="Add or change the name" style={{ textAlign: 'left', color: c.name ? 'inherit' : 'var(--muted)' }} onClick={() => void editName(c)}>{c.name || '+ Add name'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>✎</span></button></td><td>{c.total_orders}</td>
           <td>{c.last_order_at ? dayKeyIST(c.last_order_at) : '—'}{c.opted_out && <> · <b style={{ color: 'var(--red)' }}>opted out</b></>}</td>
         </tr>) : <tr><td colSpan={5}><div className="none">No contacts match this filter</div></td></tr>}
       </tbody></table></div>
