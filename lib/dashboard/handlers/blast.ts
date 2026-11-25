@@ -36,12 +36,28 @@ export const blastHandler: Handler = {
     ])
     return {
       eligible: eligible.count ?? 0, sentThisMonth: sent, cap: monthlyLimit(settings.blast_monthly_limit),
-      headerImage: settings.blast_header_image, template: settings.blast_template, campaigns: campaigns.data ?? [],
+      headerImage: settings.blast_header_image, headerVideo: settings.blast_header_video, template: settings.blast_template, campaigns: campaigns.data ?? [],
     }
   },
   actions: {
     async saveHeader(ctx, b) {
       await saveSetting(ctx, 'blast_header_image', str(b.url, 500))
+      return { ok: true }
+    },
+    /** Videos are too big for a serverless request body (4.5 MB), so the browser uploads straight to storage with this one-time link. */
+    async videoUploadUrl(ctx) {
+      const path = `blast/${ctx.branch.id}/video-${Date.now()}.mp4`
+      const signed = await ctx.admin.storage.from('menu').createSignedUploadUrl(path)
+      if (signed.error || !signed.data) {
+        console.error('[dashboard] video upload url:', signed.error?.message)
+        throw new HttpError(500, 'Could not start the video upload')
+      }
+      return { path, token: signed.data.token, url: ctx.admin.storage.from('menu').getPublicUrl(path).data.publicUrl }
+    },
+    async saveVideo(ctx, b) {
+      const url = str(b.url, 500)
+      if (url && !/\.mp4$/i.test(url)) throw new HttpError(400, 'The video must be an MP4 file')
+      await saveSetting(ctx, 'blast_header_video', url)
       return { ok: true }
     },
     async uploadHeader(ctx, b) {
@@ -54,6 +70,7 @@ export const blastHandler: Handler = {
       const template = str(b.templateName, 80)
       if (!template) throw new HttpError(400, 'Enter the approved template name')
       const header = str(b.headerImage, 500)
+      if (/video/i.test(template) && !/\.mp4(\?|$)/i.test(header)) throw new HttpError(400, 'Upload the MP4 video first: a video template needs it on every send')
       const selected = new Set((Array.isArray(b.phones) ? b.phones : []).map(String))
       const filter = selected.size ? 'selection' : (['all', 'active_30', 'repeat'].includes(String(b.filter)) ? String(b.filter) : 'all')
 
@@ -81,7 +98,9 @@ export const blastHandler: Handler = {
         branch_id: ctx.branch.id, kind: 'blast', campaign_id: campaign.id, to_phone: c.phone,
         template_name: template, language: 'en', header_image: header || null, payload: { customerName: c.name },
       }))), 'queue the messages')
-      if (header) await saveSetting(ctx, 'blast_header_image', header)
+      // A .mp4 link is a video header (n8n sends it as a video); anything else is an image.
+      if (header && /\.mp4(\?|$)/i.test(header)) await saveSetting(ctx, 'blast_header_video', header)
+      else if (header) await saveSetting(ctx, 'blast_header_image', header)
       await saveSetting(ctx, 'blast_template', template)
       await audit(ctx, { action: 'blast_queued', detail: `${template} → ${recipients.length} (${filter}) by ${ctx.staff.name}` })
       return { queued: recipients.length }

@@ -25,6 +25,7 @@ export const SETTING_DEFAULTS = {
   unknown_policy: 'Say you will check with the branch and ask a staff member to reply.',
   google_review_url: '',
   blast_header_image: '',
+  blast_header_video: '',
   blast_template: 'friedking_promo_en',
   blast_monthly_limit: '1000',
   whatsapp_number: '',
