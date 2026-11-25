@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { checkMp4, type Mp4Report } from '@/lib/mp4check'
 import { createClient } from '@/lib/supabase/client'
 import { ist, Loading, useDash, useLoad } from '../kit'
 
@@ -55,6 +56,7 @@ export default function Blast() {
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [video, setVideo] = useState<string | null>(null)
+  const [videoReport, setVideoReport] = useState<Mp4Report | null>(null)
   const [custom, setCustom] = useState(false)
   const [result, setResult] = useState<React.ReactNode>(null)
   if (!data) return <Loading error={error} onRetry={reload} />
@@ -77,10 +79,14 @@ export default function Blast() {
   }
   const uploadVideo = async (f: File | undefined) => {
     if (!f) return
-    if (!/.mp4$/i.test(f.name) && f.type !== 'video/mp4') { toast('Please choose an MP4 video'); return }
-    if (f.size > 16 * 1024 * 1024) { toast('Video is over 16 MB (WhatsApp limit): use a shorter or smaller file'); return }
+    if (!/\.mp4$/i.test(f.name) && f.type !== 'video/mp4') { toast('Please choose an MP4 video'); return }
     setUploading(true)
     try {
+      // WhatsApp never tells us when a phone cannot play a video, so check the file first.
+      const report = await checkMp4(f).catch(() => null)
+      setVideoReport(report)
+      if (report?.errors.length) { toast('This video will not work on WhatsApp: see the notes below'); return }
+      if (report?.warnings.length && !window.confirm(`This video may not play on some phones:\n\n• ${report.warnings.join('\n• ')}\n\nConverting it first is safer (see "How to fix a video" below). Upload anyway?`)) return
       // Too big for a normal request, so it goes straight to storage with a one-time link.
       const t = await api.post<{ path: string; token: string; url: string }>('blast', 'videoUploadUrl')
       const up = await createClient().storage.from('menu').uploadToSignedUrl(t.path, t.token, f, { contentType: 'video/mp4' })
@@ -130,13 +136,28 @@ export default function Blast() {
           <label className="lbl">Header video (MP4, up to 16 MB)</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <input className="f" style={{ flex: 1, minWidth: 220 }} placeholder="https://… .mp4" value={vid} onChange={(e) => setVideo(e.target.value)} />
-            <label className="btn" style={{ width: 'auto', padding: '10px 16px', cursor: 'pointer', height: 'fit-content' }}>{uploading ? 'Uploading…' : 'Upload video'}<input type="file" hidden accept="video/mp4" onChange={(e) => void uploadVideo(e.target.files?.[0])} /></label>
+            <label className="btn" style={{ width: 'auto', padding: '10px 16px', cursor: 'pointer', height: 'fit-content' }}>{uploading ? 'Uploading…' : 'Upload video'}<input type="file" hidden accept="video/mp4" onChange={(e) => { void uploadVideo(e.target.files?.[0]); e.target.value = '' }} /></label>
           </div>
+          {videoReport && <div className={videoReport.errors.length ? 'err' : videoReport.warnings.length ? 'note' : 'selinfo'} style={{ margin: '8px 0' }}>
+            <div style={{ fontWeight: 600 }}>{videoReport.errors.length ? '⛔ This video will not work on WhatsApp' : videoReport.warnings.length ? '⚠ This video may not play on some phones' : '✓ Video looks good for WhatsApp'}</div>
+            <div style={{ fontSize: 12, marginTop: 2 }}>{videoReport.info}</div>
+            {[...videoReport.errors, ...videoReport.warnings].map((m) => <div key={m} style={{ fontSize: 13, marginTop: 4 }}>• {m}</div>)}
+          </div>}
           {vid && <video src={vid} controls preload="metadata" style={{ maxWidth: 260, maxHeight: 160, borderRadius: 8, border: '1px solid #eee', display: 'block', margin: '8px 0' }} />}
           <div style={{ fontSize: 12, color: 'var(--muted)', margin: '4px 0 12px' }}>
             Video templates need the video on every send: Meta treats the one you submitted with the template as a sample only. Use an MP4 (H.264 video, AAC audio) under 16 MB.{' '}
             <button style={{ textDecoration: 'underline' }} onClick={async () => { try { await api.post('blast', 'saveVideo', { url: vid }); toast('Saved') } catch (e) { toast(e instanceof Error ? e.message : 'Could not save') } }}>Save without sending</button>
           </div>
+          <details className="fold" style={{ marginBottom: 12, border: '1px solid var(--line)', borderRadius: 10 }}>
+            <summary style={{ padding: '10px 12px', fontWeight: 600, fontSize: 14 }}>How to fix a video that will not play</summary>
+            <div style={{ fontSize: 13, lineHeight: 1.6, padding: '8px 2px' }}>
+              <p>WhatsApp plays MP4 files with <b>H.264</b> video and <b>AAC</b> sound, up to <b>16 MB</b>. Phones are most reliable with <b>720×1280 (720p)</b>, Main profile, &quot;fast start&quot;. iPhone videos are usually HEVC and must be converted.</p>
+              <p><b>Easiest (phone):</b> open the video in CapCut → Export → Resolution 720p, Frame rate 30 → save, then upload that file.</p>
+              <p><b>Computer (free):</b> HandBrake → Preset &quot;Fast 720p30&quot; → tick &quot;Web Optimized&quot; → Format MP4 → Start.</p>
+              <p><b>Computer (command):</b> <code style={{ fontSize: 11, wordBreak: 'break-all' }}>ffmpeg -i promo.mp4 -vf scale=720:1280 -c:v libx264 -profile:v main -level 3.1 -pix_fmt yuv420p -r 30 -b:v 1500k -maxrate 2000k -bufsize 3000k -c:a aac -b:a 128k -ac 2 -movflags +faststart promo_whatsapp.mp4</code></p>
+              <p><b>Always test first:</b> pick your own number in Contacts and send to it. If the video opens on your phone, send to everyone. A phone that cannot play the video still counts as &quot;delivered&quot;, so the status below cannot catch this.</p>
+            </div>
+          </details>
         </> : <>
         <label className="lbl">Header image</label>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
