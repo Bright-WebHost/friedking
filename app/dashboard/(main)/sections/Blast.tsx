@@ -10,9 +10,37 @@ const PRESETS = [
 ]
 const isVideoTemplate = (name: string) => /video/i.test(name)
 
+interface CampaignStats { total: number; waiting: number; sent: number; delivered: number; read: number; failed: number; top_error: string | null }
 interface BlastData {
   eligible: number; sentThisMonth: number; cap: number; headerImage: string; headerVideo: string; template: string
   campaigns: Array<{ id: string; template_name: string | null; audience: string; status: string; recipient_count: number; created_by_name: string | null; created_at: string }>
+  campaignStats?: Record<string, CampaignStats>
+}
+
+/** Turns WhatsApp / YCloud error text into something staff can act on. */
+function reason(err: string | null) {
+  const e = err ?? ''
+  if (/131049/.test(e)) return 'WhatsApp limited marketing messages to this person'
+  if (/132000|localizable_params/.test(e)) return 'Template text needs a value that was not sent'
+  if (/131026/.test(e)) return 'Number not on WhatsApp or cannot receive'
+  if (/131047|24 hours|re-engagement/i.test(e)) return 'Outside the 24-hour window'
+  if (/TEMPLATE_UNAVAILABLE|Template not found|132001/i.test(e)) return 'Template not approved / not found'
+  if (/131053|media|download/i.test(e)) return 'WhatsApp could not use the image or video'
+  return e.slice(0, 120)
+}
+
+function CampaignStatus({ s, fallback }: { s?: CampaignStats; fallback: string }) {
+  if (!s) return <>{fallback}</>
+  const parts: Array<[number, string, string]> = [
+    [s.read, 'read', '#1f8a4c'], [s.delivered, 'delivered', '#1f8a4c'], [s.sent, 'sent', '#555'],
+    [s.waiting, 'waiting', '#c9821a'], [s.failed, 'failed', '#c0392b'],
+  ]
+  return (
+    <div>
+      {parts.filter(([n]) => n > 0).map(([n, label, color], i) => <span key={label} style={{ color, fontWeight: 600 }}>{i ? ' · ' : ''}{n} {label}</span>)}
+      {s.failed > 0 && s.top_error && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{reason(s.top_error)}</div>}
+    </div>
+  )
 }
 
 export default function Blast() {
@@ -128,7 +156,7 @@ export default function Blast() {
       </div>
       {data.campaigns.length > 0 && <div className="anacard"><h4>Recent promotions</h4>
         <div className="tblwrap"><table><thead><tr><th>When</th><th>Template</th><th>Audience</th><th>Recipients</th><th>Status</th><th>By</th></tr></thead><tbody>
-          {data.campaigns.map((c) => <tr key={c.id}><td>{ist(c.created_at)}</td><td>{c.template_name}</td><td>{c.audience.replace('_', ' ')}</td><td>{c.recipient_count}</td><td>{c.status}</td><td>{c.created_by_name}</td></tr>)}
+          {data.campaigns.map((c) => <tr key={c.id}><td>{ist(c.created_at)}</td><td>{c.template_name}</td><td>{c.audience.replace('_', ' ')}</td><td>{c.recipient_count}</td><td><CampaignStatus s={data.campaignStats?.[c.id]} fallback={c.status} /></td><td>{c.created_by_name}</td></tr>)}
         </tbody></table></div></div>}
     </section>
   )

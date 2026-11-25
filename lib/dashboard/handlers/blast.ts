@@ -34,7 +34,15 @@ export const blastHandler: Handler = {
       getSettings(ctx),
       ctx.admin.from('broadcast_campaigns').select('id, title, template_name, audience, status, recipient_count, created_by_name, created_at').eq('branch_id', ctx.branch.id).order('created_at', { ascending: false }).limit(10),
     ])
+    // Real per-message results (needs friedking_blast_delivery_status.sql; without it the table keeps the old status).
+    const list = campaigns.data ?? []
+    const stats: Record<string, unknown> = {}
+    if (list.length) {
+      const r = await ctx.admin.rpc('fk_blast_campaign_stats', { p_campaign_ids: list.map((c) => c.id) })
+      if (!r.error) for (const s of (r.data ?? []) as Array<{ campaign_id: string }>) stats[s.campaign_id] = s
+    }
     return {
+      campaignStats: stats,
       eligible: eligible.count ?? 0, sentThisMonth: sent, cap: monthlyLimit(settings.blast_monthly_limit),
       headerImage: settings.blast_header_image, headerVideo: settings.blast_header_video, template: settings.blast_template, campaigns: campaigns.data ?? [],
     }
