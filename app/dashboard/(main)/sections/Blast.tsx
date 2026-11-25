@@ -5,11 +5,13 @@ import { checkMp4, type Mp4Report } from '@/lib/mp4check'
 import { createClient } from '@/lib/supabase/client'
 import { ist, Loading, useDash, useLoad } from '../kit'
 
-const PRESETS = [
-  { name: 'friedking_promo_en', label: 'Promotion with image (friedking_promo_en)' },
-  { name: 'friedking_promo_video', label: 'Promotion with video (friedking_promo_video)' },
+// Template names must match the ones approved in YCloud. A deleted name cannot be reused for about 30 days,
+// so a re-written template gets a new name (Pandeshwar: friedking_promo_video was replaced by friedking_promo_v).
+const PRESETS: Array<{ name: string; label: string; kind: 'image' | 'video' }> = [
+  { name: 'friedking_promo_en', label: 'Promotion with image (friedking_promo_en)', kind: 'image' },
+  { name: 'friedking_promo_v', label: 'Promotion with video (friedking_promo_v)', kind: 'video' },
+  { name: 'friedking_promo_video', label: 'Promotion with video, older template (friedking_promo_video)', kind: 'video' },
 ]
-const isVideoTemplate = (name: string) => /video/i.test(name)
 
 interface CampaignStats { total: number; waiting: number; sent: number; delivered: number; read: number; failed: number; top_error: string | null }
 interface BlastData {
@@ -58,14 +60,17 @@ export default function Blast() {
   const [video, setVideo] = useState<string | null>(null)
   const [videoReport, setVideoReport] = useState<Mp4Report | null>(null)
   const [custom, setCustom] = useState(false)
+  const [customKind, setCustomKind] = useState<'image' | 'video' | null>(null)
   const [result, setResult] = useState<React.ReactNode>(null)
   if (!data) return <Loading error={error} onRetry={reload} />
 
   const tpl = template ?? data.template
-  const asVideo = isVideoTemplate(tpl)
+  const preset = custom ? undefined : PRESETS.find((p) => p.name === tpl)
+  const isCustom = !preset
+  // Header type: from the preset, or chosen for an "Other" template (guessed from the name until chosen).
+  const asVideo = preset ? preset.kind === 'video' : (customKind ?? (/video/i.test(tpl) ? 'video' : 'image')) === 'video'
   const vid = video ?? data.headerVideo
   const hdr = asVideo ? vid : (header ?? data.headerImage)
-  const isCustom = custom || !PRESETS.some((p) => p.name === tpl)
   const remaining = Math.max(0, data.cap - data.sentThisMonth)
   const capPct = data.cap > 0 ? Math.min(100, Math.round((data.sentThisMonth / data.cap) * 100)) : 0
   const capClr = data.sentThisMonth >= data.cap ? '#c0392b' : data.sentThisMonth >= data.cap * 0.8 ? '#c9821a' : '#1f8a4c'
@@ -97,7 +102,7 @@ export default function Blast() {
   const send = async () => {
     setBusy(true); setResult(null)
     try {
-      const r = await api.post<{ queued: number }>('blast', 'send', { filter, templateName: tpl, headerImage: hdr, phones })
+      const r = await api.post<{ queued: number }>('blast', 'send', { filter, templateName: tpl, headerImage: hdr, headerType: asVideo ? 'video' : 'image', phones })
       setResult(<div className="stat g"><span>Queued for sending</span><b>{r.queued}</b></div>)
       toast(`${r.queued} messages queued`)
       setPhones([]); void reload()
@@ -130,7 +135,13 @@ export default function Blast() {
           {PRESETS.map((p) => <option key={p.name} value={p.name}>{p.label}</option>)}
           <option value="__custom">Other template (type the name)</option>
         </select>
-        {isCustom && <input className="f" placeholder="Approved template name" value={tpl} onChange={(e) => setTemplate(e.target.value)} />}
+        {isCustom && <>
+          <input className="f" placeholder="Approved template name" value={tpl} onChange={(e) => setTemplate(e.target.value)} />
+          <label className="lbl">This template&apos;s header is</label>
+          <select className="f" value={asVideo ? 'video' : 'image'} onChange={(e) => setCustomKind(e.target.value as 'image' | 'video')}>
+            <option value="image">an image</option><option value="video">a video</option>
+          </select>
+        </>}
         {asVideo ? <>
           <label className="lbl">Header video (MP4, up to 16 MB)</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

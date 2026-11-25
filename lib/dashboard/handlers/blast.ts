@@ -78,7 +78,8 @@ export const blastHandler: Handler = {
       const template = str(b.templateName, 80)
       if (!template) throw new HttpError(400, 'Enter the approved template name')
       const header = str(b.headerImage, 500)
-      if (/video/i.test(template) && !/\.mp4(\?|$)/i.test(header)) throw new HttpError(400, 'Upload the MP4 video first: a video template needs it on every send')
+      const wantsVideo = b.headerType === 'video' || (b.headerType == null && /video/i.test(template))
+      if (wantsVideo && !/\.mp4(\?|$)/i.test(header)) throw new HttpError(400, 'Upload the MP4 video first: a video template needs it on every send')
       const selected = new Set((Array.isArray(b.phones) ? b.phones : []).map(String))
       const filter = selected.size ? 'selection' : (['all', 'active_30', 'repeat'].includes(String(b.filter)) ? String(b.filter) : 'all')
 
