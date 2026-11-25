@@ -6,11 +6,11 @@ import { createClient } from '@/lib/supabase/client'
 import { ist, Loading, useDash, useLoad } from '../kit'
 
 // Template names must match the ones approved in YCloud. A deleted name cannot be reused for about 30 days,
-// so a re-written template gets a new name (Pandeshwar: friedking_promo_video was replaced by friedking_promo_v).
+// so a re-written template gets a new name (friedking_promo_video was deleted and replaced by friedking_promo_v
+// in Pandeshwar and Falnir).
 const PRESETS: Array<{ name: string; label: string; kind: 'image' | 'video' }> = [
   { name: 'friedking_promo_en', label: 'Promotion with image (friedking_promo_en)', kind: 'image' },
   { name: 'friedking_promo_v', label: 'Promotion with video (friedking_promo_v)', kind: 'video' },
-  { name: 'friedking_promo_video', label: 'Promotion with video, older template (friedking_promo_video)', kind: 'video' },
 ]
 
 interface CampaignStats { total: number; waiting: number; sent: number; delivered: number; read: number; failed: number; top_error: string | null }
@@ -64,7 +64,8 @@ export default function Blast() {
   const [result, setResult] = useState<React.ReactNode>(null)
   if (!data) return <Loading error={error} onRetry={reload} />
 
-  const tpl = template ?? data.template
+  // The last-used name is remembered per branch; the deleted friedking_promo_video now means friedking_promo_v.
+  const tpl = template ?? (data.template === 'friedking_promo_video' ? 'friedking_promo_v' : data.template)
   const preset = custom ? undefined : PRESETS.find((p) => p.name === tpl)
   const isCustom = !preset
   // Header type: from the preset, or chosen for an "Other" template (guessed from the name until chosen).
