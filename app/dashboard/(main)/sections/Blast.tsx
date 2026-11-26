@@ -8,14 +8,16 @@ import { ist, Loading, useDash, useLoad } from '../kit'
 // Template names must match the ones approved in YCloud. A deleted name cannot be reused for about 30 days,
 // so a re-written template gets a new name (friedking_promo_video was deleted and replaced by friedking_promo_v
 // in Pandeshwar and Falnir).
-const PRESETS: Array<{ name: string; label: string; kind: 'image' | 'video' }> = [
-  { name: 'friedking_promo_en', label: 'Promotion with image (friedking_promo_en)', kind: 'image' },
-  { name: 'friedking_promo_v', label: 'Promotion with video (friedking_promo_v)', kind: 'video' },
+// usesName: the template text has {{1}} for the customer's name. WhatsApp rejects the message (error 132000)
+// when we send a name the template has no place for, or leave out one it needs. Staff can change it per branch.
+const PRESETS: Array<{ name: string; label: string; kind: 'image' | 'video'; usesName: boolean }> = [
+  { name: 'friedking_promo_en', label: 'Promotion with image (friedking_promo_en)', kind: 'image', usesName: true },
+  { name: 'friedking_promo_v', label: 'Promotion with video (friedking_promo_v)', kind: 'video', usesName: false },
 ]
 
 interface CampaignStats { total: number; waiting: number; sent: number; delivered: number; read: number; failed: number; top_error: string | null }
 interface BlastData {
-  eligible: number; sentThisMonth: number; cap: number; headerImage: string; headerVideo: string; template: string
+  eligible: number; sentThisMonth: number; cap: number; headerImage: string; headerVideo: string; template: string; nameParams?: Record<string, boolean>
   campaigns: Array<{ id: string; template_name: string | null; audience: string; status: string; recipient_count: number; created_by_name: string | null; created_at: string }>
   campaignStats?: Record<string, CampaignStats>
 }
@@ -24,7 +26,9 @@ interface BlastData {
 function reason(err: string | null) {
   const e = err ?? ''
   if (/131049/.test(e)) return 'WhatsApp limited marketing messages to this person'
-  if (/132000|localizable_params/.test(e)) return 'Template text needs a value that was not sent'
+  if (/132000|localizable_params/.test(e)) return /expected number of params \(0\)/.test(e)
+    ? 'This template has no {{1}}: untick "uses the customer\'s name" and send again'
+    : 'This template needs {{1}} (the name): tick "uses the customer\'s name" and send again'
   if (/131026/.test(e)) return 'Number not on WhatsApp or cannot receive'
   if (/131047|24 hours|re-engagement/i.test(e)) return 'Outside the 24-hour window'
   if (/TEMPLATE_UNAVAILABLE|Template not found|132001/i.test(e)) return 'Template not approved / not found'
@@ -61,6 +65,7 @@ export default function Blast() {
   const [videoReport, setVideoReport] = useState<Mp4Report | null>(null)
   const [custom, setCustom] = useState(false)
   const [customKind, setCustomKind] = useState<'image' | 'video' | null>(null)
+  const [nameChoice, setNameChoice] = useState<Record<string, boolean>>({})
   const [result, setResult] = useState<React.ReactNode>(null)
   if (!data) return <Loading error={error} onRetry={reload} />
 
@@ -70,6 +75,8 @@ export default function Blast() {
   const isCustom = !preset
   // Header type: from the preset, or chosen for an "Other" template (guessed from the name until chosen).
   const asVideo = preset ? preset.kind === 'video' : (customKind ?? (/video/i.test(tpl) ? 'video' : 'image')) === 'video'
+  // Does this template's text have {{1}} for the name? This screen's choice, else this branch's last choice, else the preset.
+  const usesName = nameChoice[tpl] ?? data.nameParams?.[tpl] ?? preset?.usesName ?? true
   const vid = video ?? data.headerVideo
   const hdr = asVideo ? vid : (header ?? data.headerImage)
   const remaining = Math.max(0, data.cap - data.sentThisMonth)
@@ -103,7 +110,7 @@ export default function Blast() {
   const send = async () => {
     setBusy(true); setResult(null)
     try {
-      const r = await api.post<{ queued: number }>('blast', 'send', { filter, templateName: tpl, headerImage: hdr, headerType: asVideo ? 'video' : 'image', phones })
+      const r = await api.post<{ queued: number }>('blast', 'send', { filter, templateName: tpl, headerImage: hdr, headerType: asVideo ? 'video' : 'image', useName: usesName, phones })
       setResult(<div className="stat g"><span>Queued for sending</span><b>{r.queued}</b></div>)
       toast(`${r.queued} messages queued`)
       setPhones([]); void reload()
@@ -143,6 +150,10 @@ export default function Blast() {
             <option value="image">an image</option><option value="video">a video</option>
           </select>
         </>}
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '4px 0 12px', fontSize: 14, cursor: 'pointer' }}>
+          <input type="checkbox" className="cbox" checked={usesName} onChange={(e) => setNameChoice({ ...nameChoice, [tpl]: e.target.checked })} />
+          <span>The template text uses the customer&apos;s name (<code>{'{{1}}'}</code>, e.g. &quot;Hi {'{{1}}'}&quot;). Untick if the text has no <code>{'{{1}}'}</code>.</span>
+        </label>
         {asVideo ? <>
           <label className="lbl">Header video (MP4, up to 16 MB)</label>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

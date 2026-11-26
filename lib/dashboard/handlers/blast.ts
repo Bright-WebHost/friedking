@@ -21,6 +21,11 @@ function monthlyLimit(value: string | undefined) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : DEFAULT_MONTHLY_BLAST_LIMIT
 }
 
+/** Which templates have {{1}} for the name, remembered per branch: {"friedking_promo_v": false}. */
+function nameParams(value: string | undefined): Record<string, boolean> {
+  try { const v = JSON.parse(value || '{}'); return v && typeof v === 'object' ? v : {} } catch { return {} }
+}
+
 async function saveSetting(ctx: Ctx, key: string, value: string) {
   check(await ctx.admin.from('branch_settings').upsert({ branch_id: ctx.branch.id, key, value, updated_at: new Date().toISOString() }, { onConflict: 'branch_id,key' }), 'save the setting')
 }
@@ -44,7 +49,7 @@ export const blastHandler: Handler = {
     return {
       campaignStats: stats,
       eligible: eligible.count ?? 0, sentThisMonth: sent, cap: monthlyLimit(settings.blast_monthly_limit),
-      headerImage: settings.blast_header_image, headerVideo: settings.blast_header_video, template: settings.blast_template, campaigns: campaigns.data ?? [],
+      headerImage: settings.blast_header_image, headerVideo: settings.blast_header_video, nameParams: nameParams(settings.blast_name_params), template: settings.blast_template, campaigns: campaigns.data ?? [],
     }
   },
   actions: {
@@ -80,6 +85,8 @@ export const blastHandler: Handler = {
       const header = str(b.headerImage, 500)
       const wantsVideo = b.headerType === 'video' || (b.headerType == null && /video/i.test(template))
       if (wantsVideo && !/\.mp4(\?|$)/i.test(header)) throw new HttpError(400, 'Upload the MP4 video first: a video template needs it on every send')
+      // false = the template text has no {{1}}, so n8n must not send a name (WhatsApp error 132000 otherwise).
+      const useName = b.useName !== false
       const selected = new Set((Array.isArray(b.phones) ? b.phones : []).map(String))
       const filter = selected.size ? 'selection' : (['all', 'active_30', 'repeat'].includes(String(b.filter)) ? String(b.filter) : 'all')
 
@@ -105,12 +112,13 @@ export const blastHandler: Handler = {
       }).select('id').single(), 'save the campaign')
       check(await ctx.admin.from('outbound_messages').insert(recipients.map((c) => ({
         branch_id: ctx.branch.id, kind: 'blast', campaign_id: campaign.id, to_phone: c.phone,
-        template_name: template, language: 'en', header_image: header || null, payload: { customerName: c.name },
+        template_name: template, language: 'en', header_image: header || null, payload: { customerName: c.name, useName },
       }))), 'queue the messages')
       // A .mp4 link is a video header (n8n sends it as a video); anything else is an image.
       if (header && /\.mp4(\?|$)/i.test(header)) await saveSetting(ctx, 'blast_header_video', header)
       else if (header) await saveSetting(ctx, 'blast_header_image', header)
       await saveSetting(ctx, 'blast_template', template)
+      await saveSetting(ctx, 'blast_name_params', JSON.stringify({ ...nameParams(settings.blast_name_params), [template]: useName }))
       await audit(ctx, { action: 'blast_queued', detail: `${template} → ${recipients.length} (${filter}) by ${ctx.staff.name}` })
       return { queued: recipients.length }
     },

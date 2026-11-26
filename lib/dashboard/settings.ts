@@ -26,6 +26,7 @@ export const SETTING_DEFAULTS = {
   google_review_url: '',
   blast_header_image: '',
   blast_header_video: '',
+  blast_name_params: '{}',
   blast_template: 'friedking_promo_en',
   blast_monthly_limit: '1000',
   whatsapp_number: '',
