@@ -51,7 +51,7 @@ function CampaignStatus({ s, fallback }: { s?: CampaignStats; fallback: string }
 }
 
 export default function Blast() {
-  const { api, toast, handoff, go } = useDash()
+  const { api, toast, handoff, go, slug } = useDash()
   const { data, error, reload } = useLoad(() => api.get<BlastData>('blast'), [api])
   const init = useRef(handoff.current)
   useEffect(() => { handoff.current = null }, [handoff])
@@ -101,7 +101,7 @@ export default function Blast() {
       if (report?.errors.length) { toast('This video will not work on WhatsApp: see the notes below'); return }
       // Too big for a normal request, so it goes straight to storage with a one-time link.
       const t = await api.post<{ path: string; token: string; url: string }>('blast', 'videoUploadUrl')
-      const up = await createClient().storage.from('menu').uploadToSignedUrl(t.path, t.token, f, { contentType: 'video/mp4' })
+      const up = await createClient(slug).storage.from('menu').uploadToSignedUrl(t.path, t.token, f, { contentType: 'video/mp4' })
       if (up.error) throw new Error(up.error.message)
       await api.post('blast', 'saveVideo', { url: t.url })
       setVideo(t.url); toast('Video uploaded')

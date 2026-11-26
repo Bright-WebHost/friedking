@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
   if (!/^[0-9a-f]{64}$/.test(token)) return new Response('Not found', { status: 404 })
 
   try {
-    const admin = createAdminClient()
+    const admin = createAdminClient(request.nextUrl.searchParams.get('branch'))
     const { data: rows } = await admin.from('branch_settings').select('value').eq('key', 'shift_report_image')
     let d: ReportData | null = null
     for (const r of rows ?? []) {

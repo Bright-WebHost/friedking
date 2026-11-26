@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   if (!slug) return NextResponse.json({ message: 'branch is required' }, { status: 400 })
 
   try {
-    const admin = createAdminClient()
+    const admin = createAdminClient(slug)
     const { data: branch, error: branchError } = await admin
       .from('branches')
       .select('id')

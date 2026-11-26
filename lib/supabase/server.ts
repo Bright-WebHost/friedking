@@ -1,12 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
+import { publicProject } from './project'
 import { cookies } from 'next/headers'
 
 /** Server-side Supabase client (anon key, respects RLS). */
-export async function createClient() {
+export async function createClient(branch?: string | null) {
+  const { url, key } = publicProject(branch)
   const cookieStore = await cookies()
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    url,
+    key,
     {
       cookies: {
         getAll() {

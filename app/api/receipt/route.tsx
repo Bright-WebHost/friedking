@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   if (!isTable && !UUID.test(id)) return new Response('Order id is required', { status: 400 })
 
   try {
-    const admin = createAdminClient()
+    const admin = createAdminClient(request.nextUrl.searchParams.get('branch'))
     const SELECT = 'order_number, token_number, status, order_type, payment_method, subtotal_paise, gst_paise, total_paise, discount_paise, loyalty_discount_paise, delivery_address, table_number, special_instructions, created_at, cash_collected, branch_id, customer:customers(name, phone), items:order_items(name_snapshot, quantity, line_total_paise, line_no, notes)'
     let order
     if (isTable) {

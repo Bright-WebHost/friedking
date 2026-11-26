@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSecondaryBranch } from '@/lib/supabase/project'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -49,7 +50,8 @@ export async function GET() {
   }
 
   const limits = new Map((settings ?? []).map((row) => [row.branch_id, Number(row.value)]))
-  const usageResults = await Promise.all((branches ?? []).map(async (branch) => {
+  const localBranches = (branches ?? []).filter((branch) => !isSecondaryBranch(branch.slug))
+  const usageResults = await Promise.all(localBranches.map(async (branch) => {
     const result = await access.admin.from('outbound_messages')
       .select('id', { count: 'exact', head: true })
       .eq('branch_id', branch.id).eq('kind', 'blast').neq('status', 'failed').gte('created_at', monthStartIST())
@@ -68,7 +70,7 @@ export async function GET() {
   const usageMap = new Map(usage)
   return NextResponse.json({
     adminName: access.name,
-    branches: (branches ?? []).map((branch) => ({
+    branches: localBranches.map((branch) => ({
       ...branch,
       blastMonthlyLimit: Number.isInteger(limits.get(branch.id)) && (limits.get(branch.id) ?? -1) >= 0
         ? limits.get(branch.id) : DEFAULT_LIMIT,
@@ -92,12 +94,12 @@ export async function POST(request: NextRequest) {
   }
 
   const { data: branch, error: branchError } = await access.admin
-    .from('branches').select('id, name').eq('id', branchId).eq('is_active', true).maybeSingle()
+    .from('branches').select('id, name, slug').eq('id', branchId).eq('is_active', true).maybeSingle()
   if (branchError) {
     console.error('[platform admin] branch:', branchError.message)
     return fail('Could not verify the branch.', 500)
   }
-  if (!branch) return fail('Branch not found.', 404)
+  if (!branch || isSecondaryBranch(branch.slug)) return fail('Branch not found.', 404)
 
   const { data: current, error: currentError } = await access.admin
     .from('branch_settings').select('value').eq('branch_id', branchId).eq('key', 'blast_monthly_limit').maybeSingle()

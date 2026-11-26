@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSecondaryBranch } from '@/lib/supabase/project'
 
 export const dynamic = 'force-dynamic'
 const NO_STORE = { 'Cache-Control': 'no-store' }
@@ -11,11 +12,12 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 export async function GET(req: NextRequest) {
   const secret = String(req.nextUrl.searchParams.get('secret') ?? '')
   if (!/^[0-9a-f]{48}$/.test(secret)) return NextResponse.json({ message: 'Bad request' }, { status: 400 })
+  const branch = req.nextUrl.searchParams.get('branch')
   try {
-    const db = createAdminClient()
+    const db = createAdminClient(branch)
     const { data: v } = await db.from('wa_verifications').select('phone, verified_at, consumed_at, created_at').eq('secret', secret).maybeSingle()
     if (!v) return NextResponse.json({ verified: false, expired: true }, { headers: NO_STORE })
-    if (v.verified_at && v.phone && !v.consumed_at) {
+    if (v.verified_at && v.phone && !v.consumed_at && (!isSecondaryBranch(branch) || Date.now() - new Date(v.created_at).getTime() <= 30 * 60000)) {
       return NextResponse.json({ verified: true, phoneMasked: `+91 ${v.phone.slice(3, 5)}•••••${v.phone.slice(-3)}` }, { headers: NO_STORE })
     }
     const expired = !!v.consumed_at || Date.now() - new Date(v.created_at).getTime() > 15 * 60000

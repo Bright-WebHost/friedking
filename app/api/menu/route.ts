@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
 
   let supabase: ReturnType<typeof createAdminClient>
   try {
-    supabase = createAdminClient()
+    supabase = createAdminClient(slug)
   } catch (e) {
     console.error('[GET /api/menu]', e instanceof Error ? e.message : e)
     return NextResponse.json({ message: 'Unable to load menu' }, { status: 500, headers: noStore })

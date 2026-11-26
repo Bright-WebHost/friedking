@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { secondaryBranch } from '@/lib/supabase/project'
 
 export default function DashboardLoginPage() {
   const router = useRouter()
@@ -21,13 +22,17 @@ export default function DashboardLoginPage() {
     event.preventDefault()
     setLoading(true)
     setError('')
-    const { error: signInError } = await createClient().auth.signInWithPassword({ email, password })
+    const branch = new URLSearchParams(window.location.search).get('branch')
+    const client = (() => { try { return createClient(branch) } catch { return null } })()
+    if (!client) { setError('Dashboard temporarily unavailable.'); setLoading(false); return }
+    const { error: signInError } = await client.auth.signInWithPassword({ email, password })
     if (signInError) {
       setError(signInError.message)
       setLoading(false)
       return
     }
-    router.replace('/dashboard')
+    const target = secondaryBranch(branch)
+    router.replace(target ? '/dashboard/' + target : '/dashboard')
     router.refresh()
   }
 

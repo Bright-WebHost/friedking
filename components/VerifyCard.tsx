@@ -92,7 +92,7 @@ export default function VerifyCard({ onChange, linkToken, fixedMasked, useSessio
     if (busy || otp.length !== 6) return
     setBusy(true); setErr(null)
     try {
-      const res = await fetch('/api/verify/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret, otp }) })
+      const res = await fetch('/api/verify/confirm' + branchQ, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ secret, otp }) })
       const d = await json(res)
       if (!res.ok) setErr(d.message ?? 'Could not check the OTP.')
       else { setVerified({ how: 'otp', masked: sentTo }); report.current({ enabled: true, secret, verified: true }) }
@@ -124,7 +124,7 @@ export default function VerifyCard({ onChange, linkToken, fixedMasked, useSessio
     const check = async () => {
       if (stop || document.visibilityState === 'hidden') return
       try {
-        const res = await fetch(`/api/verify/status?secret=${msg.secret}`, { cache: 'no-store' })
+        const res = await fetch(`/api/verify/status?secret=${msg.secret}${branchQ ? '&' + branchQ.slice(1) : ''}`, { cache: 'no-store' })
         const d = await json(res)
         if (stop) return
         if (d.verified) { setVerified({ how: 'message', masked: d.phoneMasked ?? null }); report.current({ enabled: true, secret: msg.secret, verified: true }) }

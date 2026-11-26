@@ -21,7 +21,7 @@ export default function AccountPanel({ account, branch, onClose, onChanged }: { 
   const [newAddr, setNewAddr] = useState('')
 
   const post = async (url: string, body?: unknown) => {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
+    const res = await fetch(branch ? `${url}?branch=${encodeURIComponent(branch)}` : url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body ?? {}) })
     const d = await res.json().catch(() => ({}))
     if (!res.ok) setMsg(d.message ?? 'Something went wrong.')
     return res.ok

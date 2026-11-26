@@ -44,8 +44,8 @@ async function findBranch(admin: Ctx['admin'], slug: string) {
 
 /** Signed-in staff + the branch from the URL, checked against their branch access. */
 export async function resolveCtx(branchSlug: string): Promise<Ctx> {
-  const admin = createAdminClient()
-  const [staff, branch] = await Promise.all([getStaffContext(), findBranch(admin, branchSlug.toLowerCase())])
+  const admin = createAdminClient(branchSlug)
+  const [staff, branch] = await Promise.all([getStaffContext(branchSlug), findBranch(admin, branchSlug.toLowerCase())])
   if (!staff) throw new HttpError(401, 'Please sign in again')
   if (!branch || !canAccessBranch(staff, branch.id)) throw new HttpError(403, 'You do not have access to this branch')
   return { staff, branch, admin }

@@ -61,14 +61,14 @@ export async function loyaltyOffer(db: SupabaseClient, branchId: string, phone: 
 }
 
 /** Phone proven by a WhatsApp link token, a verified (unused) OTP, or the signed login cookie. */
-export async function verifiedPhone(db: SupabaseClient, opts: { linkToken?: string; verifySecret?: string; sessionPhone?: string | null }): Promise<string | null> {
+export async function verifiedPhone(db: SupabaseClient, opts: { linkToken?: string; verifySecret?: string; sessionPhone?: string | null; maxVerificationAgeMs?: number }): Promise<string | null> {
   if (opts.linkToken && /^[0-9a-f]{32}$/.test(opts.linkToken)) {
     const { data } = await db.from('wa_links').select('phone').eq('token', opts.linkToken).gt('expires_at', new Date().toISOString()).maybeSingle()
     if (data?.phone) return data.phone as string
   }
   if (opts.verifySecret && /^[0-9a-f]{48}$/.test(opts.verifySecret)) {
-    const { data } = await db.from('wa_verifications').select('phone, verified_at, consumed_at').eq('secret', opts.verifySecret).maybeSingle()
-    if (data?.phone && data.verified_at && !data.consumed_at) return data.phone as string
+    const { data } = await db.from('wa_verifications').select('phone, verified_at, consumed_at, created_at').eq('secret', opts.verifySecret).maybeSingle()
+    if (data?.phone && data.verified_at && !data.consumed_at && (!opts.maxVerificationAgeMs || Date.now() - new Date(data.created_at).getTime() <= opts.maxVerificationAgeMs)) return data.phone as string
   }
   return opts.sessionPhone ?? null
 }

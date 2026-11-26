@@ -124,10 +124,10 @@ export default function CustomerPage() {
   useEffect(() => { if (screen !== 'checkout') setReward({ use: false, valuePaise: 0, points: 0 }) }, [screen])
   const loadAccount = useCallback(async () => {
     try {
-      const d = await readJson(await fetch('/api/account/me', { cache: 'no-store' }))
+      const d = await readJson(await fetch('/api/account/me?branch=' + encodeURIComponent(branch?.slug ?? branchFromUrl() ?? ''), { cache: 'no-store' }))
       setAccount(d.loggedIn ? d : { loggedIn: false })
     } catch { /* stay logged out */ }
-  }, [])
+  }, [branch?.slug])
   useEffect(() => { void loadAccount() }, [loadAccount])
   useEffect(() => { if (account.loggedIn && account.name) setName((n) => n || account.name!) }, [account])
 
@@ -200,7 +200,7 @@ export default function CustomerPage() {
       params.delete('phone')
       const cleanQuery = params.toString()
       window.history.replaceState(window.history.state, '', `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ''}${window.location.hash}`)
-      fetch(`/api/link?t=${token}`, { cache: 'no-store' })
+      fetch(`/api/link?t=${token}&branch=${encodeURIComponent(slug ?? '')}`, { cache: 'no-store' })
         .then((r) => r.json())
         .then((d) => {
           if (!d.linked) return
@@ -379,7 +379,7 @@ export default function CustomerPage() {
       setVerifyKey((k) => k + 1)
       setVs({ enabled: vs.enabled, secret: '', verified: false })
       if (account.loggedIn && saveAddr && orderType === 'delivery' && addr) {
-        void fetch('/api/account/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', address: joinAddress(addr), label: addr.label }) }).then(loadAccount)
+        void fetch('/api/account/addresses?branch=' + encodeURIComponent(branch.slug), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'add', address: joinAddress(addr), label: addr.label }) }).then(loadAccount)
       } else if (account.loggedIn) void loadAccount()
       setCart([])
       setNotes('')

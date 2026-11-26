@@ -3,6 +3,7 @@ import { verificationEnabled } from '@/lib/verify'
 import { deliveryFeeFor, loadDeliveryRules } from '@/lib/delivery'
 import { findTable, openSession } from '@/lib/tables'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSecondaryBranch } from '@/lib/supabase/project'
 import { getCustomerPhone } from '@/lib/customer/session'
 import { loyaltyOffer } from '@/lib/loyalty'
 import { isOpenNow } from '@/lib/hours'
@@ -14,8 +15,8 @@ const MAX_ROUNDS_PER_TABLE = 40
 
 
 /** Look up an unexpired WhatsApp link token (see wa_links in friedking_whatsapp_bot.sql). */
-async function findLink(token: string) {
-  const { data } = await createAdminClient().from('wa_links').select('phone, name').eq('token', token).gt('expires_at', new Date().toISOString()).maybeSingle()
+async function findLink(db: ReturnType<typeof createAdminClient>, token: string) {
+  const { data } = await db.from('wa_links').select('phone, name').eq('token', token).gt('expires_at', new Date().toISOString()).maybeSingle()
   return data ? { phone: data.phone as string, name: (data.name as string | null) ?? '' } : null
 }
 
@@ -36,9 +37,14 @@ export async function POST(req: NextRequest) {
     return bad('Invalid request')
   }
 
+  const slug = String(body?.branchSlug ?? '').trim().toLowerCase()
+  if (!slug) return bad('Branch is required')
+  let supabase: ReturnType<typeof createAdminClient>
+  try { supabase = createAdminClient(slug) } catch { return bad('Ordering is temporarily unavailable', 503) }
+
   // A valid WhatsApp link token decides who is ordering; the browser cannot override the number.
   const linkToken = String(body.linkToken ?? '').trim()
-  const link = /^[0-9a-f]{32}$/.test(linkToken) ? await findLink(linkToken) : null
+  const link = /^[0-9a-f]{32}$/.test(linkToken) ? await findLink(supabase, linkToken) : null
   const isDineIn = body.orderType === 'dine-in'
   const tableNumber = Number(body.tableNumber)
   let phone = link ? link.phone : normalizePhone(String(body.customerPhone ?? ''))
@@ -50,9 +56,6 @@ export async function POST(req: NextRequest) {
   const notes = String(body.specialInstructions ?? '').trim().slice(0, 400)
   const idempotencyKey = String(body.idempotencyKey ?? '').trim().slice(0, 100)
   const pincode = String(body.deliveryPincode ?? '').trim()
-  const slug = String(body.branchSlug ?? '').trim().toLowerCase()
-
-  if (!slug) return bad('Branch is required')
   if (!name) return bad('Please enter your name')
   if (orderType !== 'pickup' && orderType !== 'delivery' && orderType !== 'dine-in') return bad('Invalid order type')
   if (isDineIn && (!Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 999)) return bad('Invalid table')
@@ -78,8 +81,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const supabase = createAdminClient()
-
     // Same submit sent twice (double tap, retry on a bad network) -> return the first order.
     const { data: dup } = await supabase
       .from('orders')
@@ -95,11 +96,11 @@ export async function POST(req: NextRequest) {
     let verificationId: string | null = null
     if (!isDineIn && link) {
       phone = link.phone
-    } else if (!isDineIn && await verificationEnabled(supabase)) {
+    } else if (!isDineIn && (isSecondaryBranch(slug) || await verificationEnabled(supabase))) {
       const { data: v } = verifySecret
-        ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at').eq('secret', verifySecret).maybeSingle()
+        ? await supabase.from('wa_verifications').select('id, phone, verified_at, consumed_at, created_at').eq('secret', verifySecret).maybeSingle()
         : { data: null }
-      if (!v || !v.verified_at || v.consumed_at || !v.phone) return bad('Please verify your WhatsApp number first.', 403)
+      if (!v || !v.verified_at || v.consumed_at || !v.phone || (isSecondaryBranch(slug) && Date.now() - new Date(v.created_at).getTime() > 30 * 60000)) return bad('Please verify your WhatsApp number first.', 403)
       if (link && v.phone !== link.phone) return bad('Please verify from the same WhatsApp number you chatted with.', 403)
       phone = v.phone as string
       verificationId = v.id as string
@@ -156,7 +157,7 @@ export async function POST(req: NextRequest) {
     let loyaltyPoints = 0
     let loyaltyPaise = 0
     if (body.redeemPoints === true && !isDineIn && phone) {
-      const sessionPhone = await getCustomerPhone()
+      const sessionPhone = await getCustomerPhone(slug)
       const proven = !!link || !!verificationId || (!!sessionPhone && sessionPhone === phone)
       if (proven) {
         const offer = await loyaltyOffer(supabase, branch.id, phone, totals.totalPaise)

@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isSecondaryBranch } from '@/lib/supabase/project'
 import type { StaffContext } from '@/lib/auth/staff'
 import { canSee, ROLE_LABEL, SECTIONS } from '@/lib/dashboard/access'
 import type { DMeta, DOrder } from '@/lib/dashboard/types'
@@ -84,14 +85,14 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
   }, [reloadMeta, slug])
 
   useEffect(() => {
-    fetch('/api/dashboard/me', { cache: 'no-store' })
+    fetch('/api/dashboard/me?branch=' + encodeURIComponent(slug), { cache: 'no-store' })
       .then(async (r) => {
         const data = await r.json()
         if (!r.ok) throw new Error(data.message ?? 'Could not load branches')
         setBranches(data.branches ?? [])
       })
       .catch((error) => setMetaError(error instanceof Error ? error.message : 'Could not load branches'))
-  }, [])
+  }, [slug])
 
   // The root /dashboard route can briefly render before its server redirect completes.
   // Resolve it client-side as well so the shell never waits for a branch-less API URL.
@@ -145,8 +146,8 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
   const active = SECTIONS.find((s) => s.key === sectionFromUrl) ?? nav[0]
 
   const signOut = async () => {
-    await createClient().auth.signOut()
-    router.replace('/dashboard/login')
+    await createClient(slug).auth.signOut()
+    router.replace(isSecondaryBranch(slug) ? '/dashboard/login?branch=' + encodeURIComponent(slug) : '/dashboard/login')
     router.refresh()
   }
 

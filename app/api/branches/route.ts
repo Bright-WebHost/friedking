@@ -1,38 +1,39 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSecondaryBranch, secondaryBranches } from '@/lib/supabase/project'
 import type { Branch } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  let supabase: ReturnType<typeof createAdminClient>
-  try {
-    supabase = createAdminClient()
-  } catch (e) {
-    console.error('[GET /api/branches]', e instanceof Error ? e.message : e)
-    return NextResponse.json({ message: 'Unable to load branches' }, { status: 500 })
-  }
-
-  const { data, error } = await supabase
+async function loadBranches(branch?: string): Promise<Branch[]> {
+  const { data, error } = await createAdminClient(branch)
     .from('branches')
     .select('id, slug, name, address, phone, opens_at, closes_at')
     .eq('is_active', true)
     .order('name', { ascending: true })
+    .abortSignal(AbortSignal.timeout(2500))
 
-  if (error) {
-    console.error('[GET /api/branches]', error.message)
-    return NextResponse.json({ message: 'Unable to load branches' }, { status: 500 })
+  if (error) throw new Error(error.message)
+  return (data ?? [])
+    .filter((row) => isSecondaryBranch(row.slug) === isSecondaryBranch(branch))
+    .map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      name: row.name,
+      address: row.address,
+      phone: row.phone,
+      opensAt: row.opens_at,
+      closesAt: row.closes_at,
+    }))
+}
+
+export async function GET() {
+  const secondary = secondaryBranches[0]
+  const results = await Promise.allSettled([loadBranches(), ...(secondary ? [loadBranches(secondary)] : [])])
+  const branches = results.flatMap((result) => result.status === 'fulfilled' ? result.value : [])
+    .sort((a, b) => a.name.localeCompare(b.name))
+  if (results.every((result) => result.status === 'rejected')) {
+    return NextResponse.json({ message: 'Unable to load branches' }, { status: 503 })
   }
-
-  const branches: Branch[] = (data ?? []).map((b) => ({
-    id: b.id,
-    slug: b.slug,
-    name: b.name,
-    address: b.address,
-    phone: b.phone,
-    opensAt: b.opens_at,
-    closesAt: b.closes_at,
-  }))
-
   return NextResponse.json({ branches }, { headers: { 'Cache-Control': 'no-store' } })
 }

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (!slug || !Number.isInteger(tableNumber) || tableNumber < 1 || tableNumber > 999) {
     return NextResponse.json({ exists: false }, { status: 400, headers: noStore })
   }
-  const db = createAdminClient()
+  const db = createAdminClient(slug)
   const { data: branch } = await db.from('branches').select('id').eq('slug', slug).eq('is_active', true).maybeSingle()
   if (!branch) return NextResponse.json({ exists: false }, { status: 404, headers: noStore })
   const table = await findTable(db, branch.id, tableNumber)

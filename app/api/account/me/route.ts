@@ -1,16 +1,17 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getCustomerPhone } from '@/lib/customer/session'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 
 /** GET -> { loggedIn, phoneMasked, name, addresses, orders } for the logged-in customer. */
-export async function GET() {
-  const phone = await getCustomerPhone()
+export async function GET(req: NextRequest) {
+  const branch = req.nextUrl.searchParams.get('branch')
+  const phone = await getCustomerPhone(branch)
   if (!phone) return NextResponse.json({ loggedIn: false }, { headers: { 'Cache-Control': 'no-store' } })
   const phoneMasked = `+91 ${phone.slice(3, 5)}•••••${phone.slice(-3)}`
   try {
-    const db = createAdminClient()
+    const db = createAdminClient(branch)
     const [{ data: custs }, { data: addresses }] = await Promise.all([
       db.from('customers').select('id, name, created_at').eq('phone', phone).order('created_at', { ascending: false }),
       db.from('customer_addresses').select('id, label, address').eq('phone', phone).order('created_at', { ascending: false }).limit(10),

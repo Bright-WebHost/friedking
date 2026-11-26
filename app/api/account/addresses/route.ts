@@ -6,10 +6,11 @@ export const dynamic = 'force-dynamic'
 
 /** POST { action: 'add', address, label? } | { action: 'delete', id } for the logged-in customer. */
 export async function POST(req: NextRequest) {
-  const phone = await getCustomerPhone()
+  const branch = req.nextUrl.searchParams.get('branch')
+  const phone = await getCustomerPhone(branch)
   if (!phone) return NextResponse.json({ message: 'Please log in.' }, { status: 401 })
   const b = await req.json().catch(() => ({}))
-  const db = createAdminClient()
+  const db = createAdminClient(branch)
   if (b.action === 'delete') {
     await db.from('customer_addresses').delete().eq('id', String(b.id ?? '')).eq('phone', phone)
     return NextResponse.json({ ok: true })

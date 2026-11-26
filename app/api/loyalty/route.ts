@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSecondaryBranch } from '@/lib/supabase/project'
 import { getCustomerPhone } from '@/lib/customer/session'
 import { loyaltyOffer, verifiedPhone } from '@/lib/loyalty'
 import { calcTotals } from '@/lib/utils'
@@ -21,9 +22,10 @@ export async function POST(req: NextRequest) {
   if (!slug || !Array.isArray(body.items) || !body.items.length || body.items.length > 100) return none()
 
   try {
-    const db = createAdminClient()
+    const db = createAdminClient(slug)
     const phone = await verifiedPhone(db, {
-      linkToken: String(body.linkToken ?? ''), verifySecret: String(body.verifySecret ?? ''), sessionPhone: await getCustomerPhone(),
+      linkToken: String(body.linkToken ?? ''), verifySecret: String(body.verifySecret ?? ''), sessionPhone: await getCustomerPhone(slug),
+      maxVerificationAgeMs: isSecondaryBranch(slug) ? 30 * 60000 : undefined,
     })
     if (!phone) return none()
     const { data: branch } = await db.from('branches').select('id').eq('slug', slug).eq('is_active', true).maybeSingle()

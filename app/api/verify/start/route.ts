@@ -2,6 +2,7 @@ import { randomBytes, randomInt } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getCustomerPhone } from '@/lib/customer/session'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { isSecondaryBranch } from '@/lib/supabase/project'
 import { normalizePhone } from '@/lib/utils'
 import { branchSlugOf, loadBranchVerifySettings, messageVerificationInstalled, verificationEnabled } from '@/lib/verify'
 
@@ -22,9 +23,10 @@ const newCode = () => Array.from({ length: 6 }, () => CODE_ALPHABET[randomInt(CO
  */
 export async function GET(req: NextRequest) {
   try {
-    const db = createAdminClient()
+    const slug = branchSlugOf(req.nextUrl.searchParams.get('branch'))
+    const db = createAdminClient(slug)
     if (!(await verificationEnabled(db))) return NextResponse.json({ enabled: false }, { headers: { 'Cache-Control': 'no-store' } })
-    const cfg = await loadBranchVerifySettings(db, branchSlugOf(req.nextUrl.searchParams.get('branch')))
+    const cfg = await loadBranchVerifySettings(db, slug)
     const message = !!cfg?.verifyByMessage && !!cfg?.whatsappNumber && (await messageVerificationInstalled(db))
     // 'only' hides the OTP completely (the branch's Send OTP link stays configured for later).
     return NextResponse.json({ enabled: true, otp: !!cfg?.otpWebhookUrl && !cfg?.messageOnly, message }, { headers: { 'Cache-Control': 'no-store' } })
@@ -42,9 +44,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}))
   try {
-    const db = createAdminClient()
+    const slug = branchSlugOf(b.branch)
+    const db = createAdminClient(slug)
     if (!(await verificationEnabled(db))) return NextResponse.json({ enabled: false })
-    const cfg = await loadBranchVerifySettings(db, branchSlugOf(b.branch))
+    const cfg = await loadBranchVerifySettings(db, slug)
     if (!cfg) return fail('This branch is not available.', 404)
 
     const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim().slice(0, 64) || null
@@ -82,7 +85,7 @@ export async function POST(req: NextRequest) {
       const { data } = await db.from('wa_links').select('phone').eq('token', token).gt('expires_at', new Date().toISOString()).maybeSingle()
       phone = data?.phone ?? null
     }
-    if (!phone && b.useSession) phone = await getCustomerPhone()
+    if (!phone && b.useSession) phone = await getCustomerPhone(slug)
     if (!phone) phone = normalizePhone(String(b.phone ?? ''))
     if (!phone) return fail('Enter a valid 10-digit mobile number.')
 
@@ -103,7 +106,7 @@ export async function POST(req: NextRequest) {
 
     const otp = String(randomInt(0, 1000000)).padStart(6, '0')
     const secret = randomBytes(24).toString('hex')
-    const { data: row, error } = await db.from('wa_verifications').insert({ secret, phone, otp, ip }).select('id').single()
+    const { data: row, error } = await db.from('wa_verifications').insert({ secret, phone, otp, ip, ...(isSecondaryBranch(slug) ? { branch_id: cfg.branch.id } : {}) }).select('id').single()
     if (error || !row) throw new Error(error?.message ?? 'insert failed')
 
     let sent = false
