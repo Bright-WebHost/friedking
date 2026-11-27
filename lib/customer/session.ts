@@ -8,9 +8,19 @@ const cookie = (branch?: string | null) => {
   return slug === BANGALORE_BRANCH ? 'fk_cust_bangalore' : slug ? 'fk_cust_secondary' : 'fk_cust'
 }
 
-const secondarySigningKey = (branch?: string | null) => secondaryBranch(branch) === BANGALORE_BRANCH
-  ? process.env.BANGALORE_CUSTOMER_SESSION_SECRET
-  : process.env.KADRI_CUSTOMER_SESSION_SECRET
+// Branches on the second Supabase project sign their login cookie with their own secret when one is set.
+// Without it the key is derived from the second project's service key (plus the branch slug), the same way the
+// main project does it, so a missing env var no longer breaks login.
+const secondarySigningKey = (branch?: string | null) => {
+  const slug = secondaryBranch(branch)
+  if (!slug) return undefined
+  const own = slug === BANGALORE_BRANCH
+    ? process.env.BANGALORE_CUSTOMER_SESSION_SECRET
+    : process.env.KADRI_CUSTOMER_SESSION_SECRET
+  if (own) return own
+  const service = process.env.SUPABASE_SECONDARY_SERVICE_ROLE_KEY
+  return service ? createHash('sha256').update(`fk-customer-session:${slug}:${service}`).digest() : undefined
+}
 const DAYS = 30
 
 // Signing key derives from the server-only service key, so no extra env var is needed.

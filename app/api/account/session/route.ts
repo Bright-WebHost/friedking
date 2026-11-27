@@ -11,8 +11,13 @@ export async function POST(req: NextRequest) {
   const b = await req.json().catch(() => ({}))
   const secret = String(b.secret ?? '')
   if (!/^[0-9a-f]{48}$/.test(secret)) return NextResponse.json({ message: 'Invalid request' }, { status: 400 })
-  const { data: v } = await createAdminClient(branch).from('wa_verifications').select('phone, verified_at, consumed_at, created_at').eq('secret', secret).maybeSingle()
-  if (!v?.verified_at || v.consumed_at || !v.phone || (isSecondaryBranch(branch) && Date.now() - new Date(v.created_at).getTime() > 30 * 60000)) return NextResponse.json({ message: 'Verify your number first.' }, { status: 403 })
-  await setCustomerSession(v.phone, branch)
-  return NextResponse.json({ ok: true })
+  try {
+    const { data: v } = await createAdminClient(branch).from('wa_verifications').select('phone, verified_at, consumed_at, created_at').eq('secret', secret).maybeSingle()
+    if (!v?.verified_at || v.consumed_at || !v.phone || (isSecondaryBranch(branch) && Date.now() - new Date(v.created_at).getTime() > 30 * 60000)) return NextResponse.json({ message: 'Verify your number first.' }, { status: 403 })
+    await setCustomerSession(v.phone, branch)
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    console.error('[account/session]', branch, e instanceof Error ? e.message : e)
+    return NextResponse.json({ message: 'Could not log you in right now. Please try again.' }, { status: 500 })
+  }
 }
