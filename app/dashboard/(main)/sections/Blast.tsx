@@ -193,7 +193,6 @@ export default function Blast() {
           <button style={{ textDecoration: 'underline' }} onClick={async () => { try { await api.post('blast', 'saveHeader', { url: hdr }); toast('Saved') } catch (e) { toast(e instanceof Error ? e.message : 'Could not save') } }}>Save without sending</button>
         </div>
         </>}
-        <div className="note">The template must already be approved in Meta. Messages are queued here and sent by n8n once WhatsApp (YCloud) is connected; nothing goes out from the dashboard directly.</div>
         <button className="btn" disabled={busy || data.sentThisMonth >= data.cap} onClick={() => void send()}>{busy ? 'Queuing…' : 'Send promotion'}</button>
         <div style={{ marginTop: 12 }}>{result}</div>
       </div>
