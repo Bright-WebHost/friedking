@@ -6,6 +6,7 @@ import { dayKeyIST, Loading, phoneShort, useDash, useLoad } from '../kit'
 
 type Seg = 'all' | 'recent30' | 'inactive1' | 'inactive2' | 'repeat' | 'onetime' | 'optout'
 type Sort = 'last_desc' | 'last_asc' | 'orders_desc' | 'orders_asc' | 'name_asc' | 'name_desc'
+const PAGE = 100
 const days = (c: DCustomer) => (c.last_order_at ? Math.floor((Date.now() - new Date(c.last_order_at).getTime()) / 86400000) : null)
 const inSeg = (c: DCustomer, s: Seg) => {
   const d = days(c)
@@ -30,6 +31,7 @@ export default function Contacts() {
   const [paste, setPaste] = useState('')
   const [drag, setDrag] = useState(false)
   const [imported, setImported] = useState<number | null>(null)
+  const [page, setPage] = useState(1)
   if (!data) return <Loading error={error} onRetry={reload} />
 
   const query = q.trim().toLowerCase()
@@ -45,6 +47,9 @@ export default function Contacts() {
     }
   })
   const eligible = rows.filter((c) => !c.opted_out)
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE))
+  const cur = Math.min(page, pages)
+  const shown = rows.slice((cur - 1) * PAGE, cur * PAGE)
 
   const doImport = async (text: string) => {
     try {
@@ -52,7 +57,8 @@ export default function Contacts() {
       setImported(r.phones.length); setPaste('')
       setPick((p) => new Set([...p, ...r.phones]))
       const noName = r.phones.length - r.withName
-      toast(`${r.phones.length} numbers selected (${r.added} new${r.named ? `, ${r.named} names filled in` : ''})${noName ? `. ${noName} without a name will get "Hi there"` : ''}`)
+      const already = r.phones.length - r.added
+      toast(`${r.added} new contact${r.added === 1 ? '' : 's'} added${already ? `, ${already} already saved (not added again)` : ''}${r.named ? `, ${r.named} names filled in` : ''}. ${r.phones.length} selected${noName ? `; ${noName} without a name will get "Hi there"` : ''}`)
       void reload()
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not import') }
   }
@@ -81,12 +87,12 @@ export default function Contacts() {
       {imported != null && <div className="stat" style={{ padding: '12px 16px', marginTop: 10, display: 'inline-block' }}><span>Imported</span><b>{imported}</b></div>}
 
       <div className="pickbar" style={{ marginTop: 22 }}>
-        <input className="f grow" style={{ margin: 0 }} placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select className="f2" style={{ width: 'auto', margin: 0 }} value={seg} onChange={(e) => setSeg(e.target.value as Seg)}>
+        <input className="f grow" style={{ margin: 0 }} placeholder="Search name or number" value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} />
+        <select className="f2" style={{ width: 'auto', margin: 0 }} value={seg} onChange={(e) => { setSeg(e.target.value as Seg); setPage(1) }}>
           <option value="all">All contacts</option><option value="recent30">Recently ordered (30 days)</option><option value="inactive1">Inactive 1 month+ (30–59 days)</option>
           <option value="inactive2">Inactive 2 months+ (60+ days)</option><option value="repeat">Repeat customers</option><option value="onetime">One-time customers</option><option value="optout">Opted out</option>
         </select>
-        <select className="f2" style={{ width: 'auto', margin: 0 }} value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
+        <select className="f2" style={{ width: 'auto', margin: 0 }} value={sort} onChange={(e) => { setSort(e.target.value as Sort); setPage(1) }}>
           <option value="last_desc">Last order: newest first</option><option value="last_asc">Last order: oldest first</option><option value="orders_desc">Total orders: high to low</option>
           <option value="orders_asc">Total orders: low to high</option><option value="name_asc">Name: A → Z</option><option value="name_desc">Name: Z → A</option>
         </select>
@@ -95,14 +101,33 @@ export default function Contacts() {
         {pick.size > 0 && <span className="selinfo">{pick.size} selected</span>}
       </div>
       <div className="tblwrap"><table><thead><tr><th style={{ width: 38 }} /><th>Number</th><th>Name</th><th>Orders</th><th>Last order</th></tr></thead><tbody>
-        {rows.length ? rows.slice(0, 400).map((c) => <tr key={c.id}>
+        {shown.length ? shown.map((c) => <tr key={c.id}>
           <td><input type="checkbox" className="cbox" disabled={c.opted_out} checked={pick.has(c.phone)} onChange={(e) => { const n = new Set(pick); if (e.target.checked) n.add(c.phone); else n.delete(c.phone); setPick(n) }} /></td>
           <td>{phoneShort(c.phone)}</td><td><button title="Add or change the name" style={{ textAlign: 'left', color: c.name ? 'inherit' : 'var(--muted)' }} onClick={() => void editName(c)}>{c.name || '+ Add name'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>✎</span></button></td><td>{c.total_orders}</td>
           <td>{c.last_order_at ? dayKeyIST(c.last_order_at) : '—'}{c.opted_out && <> · <b style={{ color: 'var(--red)' }}>opted out</b></>}</td>
         </tr>) : <tr><td colSpan={5}><div className="none">No contacts match this filter</div></td></tr>}
       </tbody></table></div>
-      {rows.length > 400 && <div className="none" style={{ marginTop: 10 }}>Showing first 400. Search or filter to narrow.</div>}
+      {pages > 1 && <Pager page={cur} pages={pages} total={rows.length} onPage={setPage} />}
       {pick.size > 0 && <button className="btn" style={{ marginTop: 16 }} onClick={() => go('blast', { phones: [...pick] })}>Blast to {pick.size} selected →</button>}
     </section>
+  )
+}
+
+/** Page numbers under the table: Prev 1 2 3 … 13 Next, with "101–200 of 1230". */
+function Pager({ page, pages, total, onPage }: { page: number; pages: number; total: number; onPage: (p: number) => void }) {
+  const nums = [...new Set([1, page - 2, page - 1, page, page + 1, page + 2, pages])].filter((n) => n >= 1 && n <= pages).sort((a, b) => a - b)
+  const go = (p: number) => { onPage(p); document.querySelector('.fkd .tblwrap')?.scrollIntoView({ block: 'start', behavior: 'smooth' }) }
+  return (
+    <div className="pickbar" style={{ marginTop: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+      <button className="btn sm ghost" disabled={page <= 1} onClick={() => go(page - 1)}>‹ Prev</button>
+      {nums.map((n, i) => (
+        <span key={n} style={{ display: 'contents' }}>
+          {i > 0 && n - nums[i - 1] > 1 && <span style={{ color: 'var(--muted)' }}>…</span>}
+          <button className={`btn sm ${n === page ? '' : 'ghost'}`} onClick={() => go(n)} aria-current={n === page ? 'page' : undefined}>{n}</button>
+        </span>
+      ))}
+      <button className="btn sm ghost" disabled={page >= pages} onClick={() => go(page + 1)}>Next ›</button>
+      <span className="selinfo">{(page - 1) * PAGE + 1}–{Math.min(page * PAGE, total)} of {total}</span>
+    </div>
   )
 }

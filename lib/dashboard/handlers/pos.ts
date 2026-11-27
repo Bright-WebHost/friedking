@@ -3,28 +3,48 @@ import { isBoss } from '@/lib/dashboard/access'
 import { audit, check, emitOrderEvent, getSettings, HttpError, id, int, optStr, str, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
 
+/**
+ * Every row of a query. Supabase returns at most 1000 rows per request (a project setting), and a bigger
+ * .limit() is silently cut to 1000, so we read page by page. `page` must apply a stable order (ending in id).
+ */
+async function fetchAll<T>(what: string, page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>, max = 50000): Promise<T[]> {
+  const size = 1000
+  const out: T[] = []
+  for (let from = 0; from < max; from += size) {
+    const rows = check(await page(from, from + size - 1), what) ?? []
+    out.push(...rows)
+    if (rows.length < size) break
+  }
+  return out
+}
+
+interface CustomerRow { id: string; phone: string; name: string | null; created_at: string; opted_out?: boolean | null; source?: string | null }
+
 /** Customers with order count, last order and loyalty balance (POS type-ahead, Contacts, Blast). */
 export async function loadCustomers(ctx: Ctx) {
   const [customers, orders, accounts] = await Promise.all([
-    ctx.admin.from('customers').select('*').eq('branch_id', ctx.branch.id).order('created_at', { ascending: false }).limit(5000),
-    ctx.admin.from('orders').select('customer_id, created_at, status').eq('branch_id', ctx.branch.id).in('status', ['pending', 'confirmed', 'preparing', 'ready', 'delivered']).limit(20000),
-    ctx.admin.from('loyalty_accounts').select('customer_id, points_balance, lifetime_points, tier'),
+    fetchAll<CustomerRow>('load customers', (from, to) => ctx.admin.from('customers').select('*').eq('branch_id', ctx.branch.id)
+      .order('created_at', { ascending: false }).order('id').range(from, to)),
+    fetchAll<{ customer_id: string; created_at: string }>('load orders', (from, to) => ctx.admin.from('orders').select('customer_id, created_at').eq('branch_id', ctx.branch.id)
+      .in('status', ['pending', 'confirmed', 'preparing', 'ready', 'delivered']).order('id').range(from, to)),
+    fetchAll<{ customer_id: string; points_balance: number; lifetime_points: number; tier: string | null }>('load points', (from, to) => ctx.admin.from('loyalty_accounts')
+      .select('customer_id, points_balance, lifetime_points, tier, customers!inner(branch_id)').eq('customers.branch_id', ctx.branch.id).order('id').range(from, to)),
   ])
   const stats = new Map<string, { n: number; last: string }>()
-  for (const o of check(orders, 'load orders') ?? []) {
+  for (const o of orders) {
     const s = stats.get(o.customer_id) ?? { n: 0, last: '' }
     s.n += 1
     if (o.created_at > s.last) s.last = o.created_at
     stats.set(o.customer_id, s)
   }
-  const acct = new Map((accounts.data ?? []).map((a) => [a.customer_id, a]))
-  return (check(customers, 'load customers') ?? []).map((c) => ({
+  const acct = new Map(accounts.map((a) => [a.customer_id, a]))
+  return customers.map((c) => ({
     id: c.id as string,
     phone: c.phone as string,
     name: (c.name as string | null) ?? null,
     created_at: c.created_at as string,
     opted_out: !!c.opted_out,
-    source: (c.source as string | undefined) ?? 'order',
+    source: c.source ?? 'order',
     total_orders: stats.get(c.id)?.n ?? 0,
     last_order_at: stats.get(c.id)?.last || null,
     points_balance: acct.get(c.id)?.points_balance ?? 0,
