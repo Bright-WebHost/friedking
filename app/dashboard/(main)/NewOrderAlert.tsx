@@ -15,6 +15,7 @@ export default function NewOrderAlert({ onNew, sirenBeat }: { onNew: (o: DOrder)
   const [pane, setPane] = useState<'accept' | 'decline'>('accept')
   const [reason, setReason] = useState('')
   const seen = useRef<Set<string> | null>(null)
+  const lastIds = useRef<string | null>(null)
   const onNewRef = useRef(onNew)
   onNewRef.current = onNew
 
@@ -25,8 +26,14 @@ export default function NewOrderAlert({ onNew, sirenBeat }: { onNew: (o: DOrder)
       const pending = orders.filter((o) => o.status === 'pending').sort((a, b) => a.created_at.localeCompare(b.created_at))
       const first = seen.current === null
       seen.current ??= new Set()
-      for (const o of pending) if (!seen.current.has(o.id)) { seen.current.add(o.id); if (!first) onNewRef.current(o) }
+      let arrived = false
+      for (const o of pending) if (!seen.current.has(o.id)) { seen.current.add(o.id); if (!first) { arrived = true; onNewRef.current(o) } }
+      // The board and tables refresh only every 30 s; a new order (or one accepted on another screen) refreshes them now.
+      const ids = pending.map((o) => o.id).join(',')
+      const changed = lastIds.current !== null && lastIds.current !== ids
+      lastIds.current = ids
       setQueue(pending)
+      if (arrived || changed) window.dispatchEvent(new Event('fk-orders-changed'))
     } catch { /* next poll retries */ }
   }, [api])
 

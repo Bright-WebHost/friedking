@@ -14,7 +14,7 @@ export default function POS() {
   const { api, toast, handoff, staff, settings, branch, go } = useDash()
   const { data, error, reload } = useLoad(() => api.get<PosData>('pos'), [api])
   const tabs = useLoad(() => api.get<{ tables: DTable[]; sessions: DSession[]; orders: DOrder[] }>('tables'), [api])
-  usePoll(tabs.reload, 5000)
+  usePoll(tabs.reload, 30000) // also refreshed at once after any order change
 
   const tables = useMemo(() => {
     return [...(tabs.data?.tables ?? [])].sort((a, b) => a.table_number - b.table_number)

@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { DOrder, DSession, DTable } from '@/lib/dashboard/types'
-import { ist, minsSince, Modal, phoneShort, printReceipt, printTableQR, rs, statusLabel, todayIST, useDash, useLoad, usePoll } from '../kit'
+import { ist, minsSince, Modal, phoneShort, printReceipt, printTableQR, rs, statusLabel, useDash, useLoad, usePoll } from '../kit'
 import { canEdit, LineItems, SourceTag, StaffTag, type useOrderActions } from './orderParts'
 
 /** Table state. "new" = a round is waiting for staff to accept it (website orders). */
@@ -20,14 +20,12 @@ export function useFloor() {
   const [modal, setModal] = useState<React.ReactNode>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const { data, error, reload } = useLoad(async () => {
-    const [t, today] = await Promise.all([
-      api.get<{ tables: DTable[]; sessions: DSession[]; orders: DOrder[] }>('tables'),
-      api.get<{ orders: DOrder[] }>('orders', { since: new Date(`${todayIST()}T00:00:00+05:30`).toISOString(), limit: 500 }),
-    ])
+    // (It used to also download up to 500 of today's orders on every refresh for a dine-in count that is no longer shown.)
+    const t = await api.get<{ tables: DTable[]; sessions: DSession[]; orders: DOrder[] }>('tables')
     updated(new Date())
-    return { ...t, todayDine: today.orders.filter((o) => o.order_type === 'dine-in' && o.status !== 'cancelled').length }
+    return t
   }, [api])
-  usePoll(reload)
+  usePoll(reload, 30000) // new orders refresh it at once through NewOrderAlert
   const close = () => setModal(null)
 
   const sessionOf = (t: DTable) => data?.sessions.find((s) => s.table_id === t.id)

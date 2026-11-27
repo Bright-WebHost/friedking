@@ -27,7 +27,7 @@ export default function Orders() {
     updated(new Date())
     return r.orders
   }, [range, api])
-  usePoll(reload)
+  usePoll(reload, 30000) // new orders refresh it at once through NewOrderAlert
   const floor = useFloor()
   const reloadAll = () => { void reload(); void floor.reload() }
   const act = useOrderActions(reloadAll)
