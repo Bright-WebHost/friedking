@@ -1,7 +1,7 @@
 import { DEFAULT_MONTHLY_BLAST_LIMIT } from '@/lib/dashboard/settings'
 import { audit, check, getSettings, HttpError, int, str, uploadImage, type Ctx } from '@/lib/dashboard/server'
 import type { Handler } from './index'
-import { loadCustomers } from './pos'
+import { contactsByPhones, contactsMatching } from '@/lib/dashboard/customers'
 
 /** Start of the current calendar month in IST, as a UTC instant (same as Oceana's monthStartIST). */
 export function monthStartIST() {
@@ -90,12 +90,10 @@ export const blastHandler: Handler = {
       const selected = new Set((Array.isArray(b.phones) ? b.phones : []).map(String))
       const filter = selected.size ? 'selection' : (['all', 'active_30', 'repeat'].includes(String(b.filter)) ? String(b.filter) : 'all')
 
-      const customers = (await loadCustomers(ctx)).filter((c) => !c.opted_out)
-      const cutoff = new Date(Date.now() - 30 * 86400000).toISOString()
-      const recipients = customers.filter((c) =>
-        filter === 'selection' ? selected.has(c.phone)
-          : filter === 'active_30' ? !!c.last_order_at && c.last_order_at >= cutoff
-            : filter === 'repeat' ? c.total_orders > 1 : true)
+      // Worked out in the database: only saved, not-opted-out contacts of this branch.
+      const recipients = filter === 'selection'
+        ? (await contactsByPhones(ctx, [...selected])).filter((c) => !c.opted_out)
+        : await contactsMatching(ctx, { seg: filter === 'active_30' ? 'recent30' : filter === 'repeat' ? 'repeat' : 'all', reachableOnly: true })
       if (!recipients.length) throw new HttpError(400, 'Nobody matches that audience')
 
       const settings = await getSettings(ctx)

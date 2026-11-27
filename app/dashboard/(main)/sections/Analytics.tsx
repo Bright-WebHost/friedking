@@ -14,7 +14,7 @@ export default function Analytics() {
   const [modal, setModal] = useState<React.ReactNode>(null)
   const mobile = useIsMobile()
   const { data, error, reload } = useLoad(async () => {
-    const [o, c] = await Promise.all([api.get<{ orders: DOrder[] }>('orders', { limit: 2000 }), api.get<{ customers: DCustomer[] }>('contacts')])
+    const [o, c] = await Promise.all([api.get<{ orders: DOrder[] }>('orders', { limit: 2000 }), api.get<{ customers: DCustomer[] }>('contacts', { view: 'ordered' })])
     return { orders: o.orders, customers: c.customers }
   }, [api])
   if (!data) return <Loading error={error} onRetry={reload} />

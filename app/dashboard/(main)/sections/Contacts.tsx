@@ -1,55 +1,65 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DCustomer } from '@/lib/dashboard/types'
-import { dayKeyIST, Loading, phoneShort, useDash, useLoad } from '../kit'
+import { dayKeyIST, Loading, phoneShort, useDash } from '../kit'
 
 type Seg = 'all' | 'recent30' | 'inactive1' | 'inactive2' | 'repeat' | 'onetime' | 'optout'
 type Sort = 'last_desc' | 'last_asc' | 'orders_desc' | 'orders_asc' | 'name_asc' | 'name_desc'
 const PAGE = 100
-const days = (c: DCustomer) => (c.last_order_at ? Math.floor((Date.now() - new Date(c.last_order_at).getTime()) / 86400000) : null)
-const inSeg = (c: DCustomer, s: Seg) => {
-  const d = days(c)
-  switch (s) {
-    case 'recent30': return d != null && d <= 30
-    case 'inactive1': return d != null && d >= 30 && d < 60
-    case 'inactive2': return d != null && d >= 60
-    case 'repeat': return c.total_orders > 1
-    case 'onetime': return c.total_orders === 1
-    case 'optout': return c.opted_out
-    default: return true
-  }
-}
 
+interface PageData { customers: DCustomer[]; matching: number; total: number; optedOut: number; page: number; size: number }
+
+/**
+ * Contacts. Search, filter, sort and paging run on the server (lib/dashboard/customers.ts), so only the 100 rows on
+ * screen are downloaded, however many contacts the branch has.
+ */
 export default function Contacts() {
   const { api, toast, go } = useDash()
-  const { data, error, reload } = useLoad(() => api.get<{ customers: DCustomer[] }>('contacts'), [api])
   const [q, setQ] = useState('')
+  const [search, setSearch] = useState('') // q after the person stops typing
   const [seg, setSeg] = useState<Seg>('all')
   const [sort, setSort] = useState<Sort>('last_desc')
+  const [page, setPage] = useState(1)
+  const [data, setData] = useState<PageData | null>(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
   const [pick, setPick] = useState<Set<string>>(new Set())
   const [paste, setPaste] = useState('')
   const [drag, setDrag] = useState(false)
   const [imported, setImported] = useState<number | null>(null)
-  const [page, setPage] = useState(1)
-  if (!data) return <Loading error={error} onRetry={reload} />
+  const [selecting, setSelecting] = useState(false)
+  const seq = useRef(0)
 
-  const query = q.trim().toLowerCase()
-  let rows = data.customers.filter((c) => (!query || c.phone.includes(query) || (c.name ?? '').toLowerCase().includes(query)) && inSeg(c, seg))
-  rows = [...rows].sort((a, b) => {
-    switch (sort) {
-      case 'last_asc': return (a.last_order_at ?? '').localeCompare(b.last_order_at ?? '')
-      case 'orders_desc': return b.total_orders - a.total_orders
-      case 'orders_asc': return a.total_orders - b.total_orders
-      case 'name_asc': return (a.name ?? '').localeCompare(b.name ?? '')
-      case 'name_desc': return (b.name ?? '').localeCompare(a.name ?? '')
-      default: return (b.last_order_at ?? '').localeCompare(a.last_order_at ?? '')
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(q.trim()); setPage(1) }, 300)
+    return () => clearTimeout(t)
+  }, [q])
+
+  const load = useCallback(async () => {
+    const mine = ++seq.current // only the newest request may update the table
+    setBusy(true)
+    try {
+      const d = await api.get<PageData>('contacts', { page, size: PAGE, q: search, seg, sort })
+      if (mine !== seq.current) return
+      setData(d); setError('')
+    } catch (e) {
+      if (mine === seq.current) setError(e instanceof Error ? e.message : 'Could not load')
+    } finally {
+      if (mine === seq.current) setBusy(false)
     }
-  })
-  const eligible = rows.filter((c) => !c.opted_out)
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE))
-  const cur = Math.min(page, pages)
-  const shown = rows.slice((cur - 1) * PAGE, cur * PAGE)
+  }, [api, page, search, seg, sort])
+  useEffect(() => { void load() }, [load])
+  // Fewer matches than the page we are on (e.g. after a search): go to the last page that has rows.
+  useEffect(() => {
+    if (data && page > 1 && (page - 1) * PAGE >= data.matching) setPage(Math.max(1, Math.ceil(data.matching / PAGE)))
+  }, [data, page])
+
+  if (!data) return <Loading error={error} onRetry={load} />
+
+  const pages = Math.max(1, Math.ceil(data.matching / PAGE))
+  const shown = data.customers
+  const filtered = !!search || seg !== 'all'
 
   const doImport = async (text: string) => {
     try {
@@ -59,27 +69,36 @@ export default function Contacts() {
       const noName = r.phones.length - r.withName
       const already = r.phones.length - r.added
       toast(`${r.added} new contact${r.added === 1 ? '' : 's'} added${already ? `, ${already} already saved (not added again)` : ''}${r.named ? `, ${r.named} names filled in` : ''}. ${r.phones.length} selected${noName ? `; ${noName} without a name will get "Hi there"` : ''}`)
-      void reload()
+      void load()
     } catch (e) { toast(e instanceof Error ? e.message : 'Could not import') }
   }
   const readFile = (f: File | undefined) => { if (f) void f.text().then(doImport) }
   const editName = async (c: DCustomer) => {
     const name = window.prompt(`Name for ${phoneShort(c.phone)} (used in promotions as "Hi <name>")`, c.name ?? '')
     if (name === null) return
-    try { await api.post('contacts', 'setName', { phone: c.phone, name }); toast('Name saved'); void reload() }
+    try { await api.post('contacts', 'setName', { phone: c.phone, name }); toast('Name saved'); void load() }
     catch (e) { toast(e instanceof Error ? e.message : 'Could not save the name') }
+  }
+  const selectAll = async () => {
+    setSelecting(true)
+    try {
+      const r = await api.post<{ phones: string[] }>('contacts', 'phones', { q: search, seg, sort })
+      setPick((p) => new Set([...p, ...r.phones]))
+      toast(`${r.phones.length} contacts selected${data.matching > r.phones.length ? ` (${data.matching - r.phones.length} opted out, left out)` : ''}`)
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not select') }
+    finally { setSelecting(false) }
   }
 
   return (
     <section>
       <div className="stats">
-        <div className="stat"><span>Saved Contacts</span><b>{data.customers.length}</b></div>
-        <div className="stat b"><span>Matching Filter</span><b>{rows.length}</b></div>
+        <div className="stat"><span>Saved Contacts</span><b>{data.total}</b></div>
+        <div className="stat b"><span>Matching Filter</span><b>{data.matching}</b></div>
         <div className="stat r"><span>Selected</span><b>{pick.size}</b></div>
-        <div className="stat o"><span>Opted Out</span><b>{data.customers.filter((c) => c.opted_out).length}</b></div>
+        <div className="stat o"><span>Opted Out</span><b>{data.optedOut}</b></div>
       </div>
       <div className={`drop ${drag ? 'on' : ''}`} onDragOver={(e) => { e.preventDefault(); setDrag(true) }} onDragLeave={() => setDrag(false)} onDrop={(e) => { e.preventDefault(); setDrag(false); readFile(e.dataTransfer.files[0]) }}>
-        <b style={{ color: 'var(--ink)' }}>Add numbers</b><br />Drop a CSV here, or paste below: one contact per line as <b>Name, number</b> (the name is used in promotions as &quot;Hi Name&quot;). Numbers without a name get &quot;Hi there&quot;.
+        <b style={{ color: 'var(--ink)' }}>Add numbers</b><br />Drop a CSV here, or paste below: one contact per line as <b>Name, number</b> (the name is used in promotions as &quot;Hi Name&quot;). Numbers without a name get &quot;Hi there&quot;. Numbers already saved are not added again.
         <div style={{ marginTop: 12 }}><label className="btn sm ghost" style={{ display: 'inline-block', cursor: 'pointer' }}>Choose CSV<input type="file" accept=".csv,.txt" hidden onChange={(e) => readFile(e.target.files?.[0])} /></label></div>
       </div>
       <textarea className="f" rows={3} style={{ marginTop: 12 }} placeholder={'Shahil, 77952 40605\nRiya, 98450 12345'} value={paste} onChange={(e) => setPaste(e.target.value)} />
@@ -87,7 +106,7 @@ export default function Contacts() {
       {imported != null && <div className="stat" style={{ padding: '12px 16px', marginTop: 10, display: 'inline-block' }}><span>Imported</span><b>{imported}</b></div>}
 
       <div className="pickbar" style={{ marginTop: 22 }}>
-        <input className="f grow" style={{ margin: 0 }} placeholder="Search name or number" value={q} onChange={(e) => { setQ(e.target.value); setPage(1) }} />
+        <input className="f grow" style={{ margin: 0 }} placeholder="Search name or number" value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="f2" style={{ width: 'auto', margin: 0 }} value={seg} onChange={(e) => { setSeg(e.target.value as Seg); setPage(1) }}>
           <option value="all">All contacts</option><option value="recent30">Recently ordered (30 days)</option><option value="inactive1">Inactive 1 month+ (30–59 days)</option>
           <option value="inactive2">Inactive 2 months+ (60+ days)</option><option value="repeat">Repeat customers</option><option value="onetime">One-time customers</option><option value="optout">Opted out</option>
@@ -96,18 +115,19 @@ export default function Contacts() {
           <option value="last_desc">Last order: newest first</option><option value="last_asc">Last order: oldest first</option><option value="orders_desc">Total orders: high to low</option>
           <option value="orders_asc">Total orders: low to high</option><option value="name_asc">Name: A → Z</option><option value="name_desc">Name: Z → A</option>
         </select>
-        <button className="btn sm ghost" onClick={() => setPick(new Set([...pick, ...eligible.map((c) => c.phone)]))}>Select all shown ({eligible.length})</button>
+        <button className="btn sm ghost" disabled={selecting || !data.matching} onClick={() => void selectAll()}>{selecting ? 'Selecting…' : `Select all ${filtered ? 'matching' : 'contacts'} (${data.matching})`}</button>
         <button className="btn sm ghost" onClick={() => setPick(new Set())}>Clear</button>
         {pick.size > 0 && <span className="selinfo">{pick.size} selected</span>}
+        {busy && <span className="selinfo">Loading…</span>}
       </div>
-      <div className="tblwrap"><table><thead><tr><th style={{ width: 38 }} /><th>Number</th><th>Name</th><th>Orders</th><th>Last order</th></tr></thead><tbody>
+      <div className="tblwrap" style={{ opacity: busy ? 0.6 : 1 }}><table><thead><tr><th style={{ width: 38 }} /><th>Number</th><th>Name</th><th>Orders</th><th>Last order</th></tr></thead><tbody>
         {shown.length ? shown.map((c) => <tr key={c.id}>
           <td><input type="checkbox" className="cbox" disabled={c.opted_out} checked={pick.has(c.phone)} onChange={(e) => { const n = new Set(pick); if (e.target.checked) n.add(c.phone); else n.delete(c.phone); setPick(n) }} /></td>
           <td>{phoneShort(c.phone)}</td><td><button title="Add or change the name" style={{ textAlign: 'left', color: c.name ? 'inherit' : 'var(--muted)' }} onClick={() => void editName(c)}>{c.name || '+ Add name'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>✎</span></button></td><td>{c.total_orders}</td>
           <td>{c.last_order_at ? dayKeyIST(c.last_order_at) : '—'}{c.opted_out && <> · <b style={{ color: 'var(--red)' }}>opted out</b></>}</td>
-        </tr>) : <tr><td colSpan={5}><div className="none">No contacts match this filter</div></td></tr>}
+        </tr>) : <tr><td colSpan={5}><div className="none">{busy ? 'Loading…' : 'No contacts match this filter'}</div></td></tr>}
       </tbody></table></div>
-      {pages > 1 && <Pager page={cur} pages={pages} total={rows.length} onPage={setPage} />}
+      {pages > 1 && <Pager page={Math.min(page, pages)} pages={pages} total={data.matching} onPage={setPage} />}
       {pick.size > 0 && <button className="btn" style={{ marginTop: 16 }} onClick={() => go('blast', { phones: [...pick] })}>Blast to {pick.size} selected →</button>}
     </section>
   )

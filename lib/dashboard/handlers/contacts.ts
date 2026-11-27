@@ -1,7 +1,14 @@
 import { normalizePhone } from '@/lib/utils'
 import { check, HttpError, str } from '@/lib/dashboard/server'
 import type { Handler } from './index'
-import { loadCustomers } from './pos'
+import { contactsMatching, contactsPage, contactTotals, customersWithOrders, SEGMENTS, SORTS, type ContactFilter, type Segment, type Sort } from '@/lib/dashboard/customers'
+
+/** Search / filter / sort from the request, validated. */
+function filterOf(src: { get(k: string): string | null }): ContactFilter & { sort: Sort } {
+  const seg = String(src.get('seg') ?? 'all') as Segment
+  const sort = String(src.get('sort') ?? 'last_desc') as Sort
+  return { q: String(src.get('q') ?? '').slice(0, 60), seg: SEGMENTS.includes(seg) ? seg : 'all', sort: SORTS.includes(sort) ? sort : 'last_desc' }
+}
 
 /** A name: letters only, tidy spaces, max 60 characters. Empty when the text has no letters. */
 function cleanName(text: string) {
@@ -34,8 +41,17 @@ export function parseContacts(text: string) {
 
 export const contactsHandler: Handler = {
   sections: ['contacts', 'blast', 'analytics', 'loyalty'],
-  async get(ctx) {
-    return { customers: await loadCustomers(ctx) }
+  /**
+   * GET ?page=&size=&q=&seg=&sort= -> one page of contacts { customers, matching, total, optedOut, page, size }.
+   * GET ?view=ordered -> every customer who has ordered (Analytics).
+   */
+  async get(ctx, params) {
+    if (params.get('view') === 'ordered') return { customers: await customersWithOrders(ctx) }
+    const f = filterOf(params)
+    const size = Math.min(200, Math.max(10, Math.floor(Number(params.get('size')) || 100)))
+    const page = Math.max(1, Math.floor(Number(params.get('page')) || 1))
+    const [list, totals] = await Promise.all([contactsPage(ctx, f, f.sort, page, size), contactTotals(ctx)])
+    return { ...list, ...totals, page, size }
   },
   actions: {
     /** Paste or CSV. New numbers are added with their name; an existing contact gets the name only if it has none. */
@@ -66,6 +82,11 @@ export const contactsHandler: Handler = {
       }
       const withName = phones.filter((p) => parsed.get(p)).length
       return { phones, added: fresh.length, withName, named }
+    },
+    /** Every reachable (not opted-out) number matching the search and filter: "Select all" on Contacts. */
+    async phones(ctx, b) {
+      const f = filterOf({ get: (k: string) => (b[k] == null ? null : String(b[k])) })
+      return { phones: (await contactsMatching(ctx, { ...f, reachableOnly: true })).map((c) => c.phone) }
     },
     /** Add or correct one contact's name (used in promotions as "Hi <name>"). */
     async setName(ctx, b) {

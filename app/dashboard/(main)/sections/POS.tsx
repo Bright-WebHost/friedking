@@ -8,7 +8,7 @@ import { Img, Loading, openPrintWindow, phoneShort, printReceipt, rs, useDash, u
 
 const PER_CAT = 8
 type OType = 'pickup' | 'delivery' | 'dine-in'
-interface PosData { items: DMenuItem[]; categories: DCategory[]; customers: DCustomer[]; program: DProgram | null; popularIds: string[] }
+interface PosData { items: DMenuItem[]; categories: DCategory[]; program: DProgram | null; popularIds: string[] }
 
 export default function POS() {
   const { api, toast, handoff, staff, settings, branch, go } = useDash()
@@ -54,11 +54,24 @@ export default function POS() {
   const count = lines.reduce((s, l) => s + l.qty, 0)
 
   const digits = phone.replace(/\D/g, '')
-  const match = useMemo(() => {
-    const ten = digits.slice(-10)
-    return ten.length === 10 ? data?.customers.find((c) => c.phone.endsWith(ten)) ?? null : null
-  }, [digits, data])
-  const hits = digits.length >= 3 && typeahead ? (data?.customers ?? []).filter((c) => c.phone.includes(digits)).slice(0, 6) : []
+  // Saved contacts are looked up on the server as the number is typed (3+ digits), so this stays fast with any number of contacts.
+  const [found, setFound] = useState<DCustomer[]>([])
+  const lookupFor = digits.length >= 3 ? digits.slice(-10) : ''
+  useEffect(() => {
+    if (!lookupFor) { setFound([]); return }
+    let live = true
+    const t = setTimeout(() => {
+      api.get<{ hits: DCustomer[] }>('pos', { lookup: lookupFor })
+        .then((r) => { if (live) setFound(r.hits ?? []) })
+        .catch(() => { /* keep the last results; the next keystroke tries again */ })
+    }, 200)
+    return () => { live = false; clearTimeout(t) }
+  }, [api, lookupFor])
+  // While the next answer is on its way, narrow the last one so the list does not flicker.
+  const current = lookupFor ? found.filter((c) => c.phone.includes(lookupFor)) : []
+  const ten = digits.slice(-10)
+  const match = ten.length === 10 ? current.find((c) => c.phone.endsWith(ten)) ?? null : null
+  const hits = typeahead ? current.slice(0, 6) : []
 
   const program = data?.program
   const discountPct = discOn && isBoss(staff.role) ? Math.min(100, Math.max(0, Number(disc) || 0)) : 0
