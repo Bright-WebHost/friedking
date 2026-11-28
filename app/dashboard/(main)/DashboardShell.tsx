@@ -8,7 +8,7 @@ import { isSecondaryBranch } from '@/lib/supabase/project'
 import type { StaffContext } from '@/lib/auth/staff'
 import { canSee, ROLE_LABEL, SECTIONS } from '@/lib/dashboard/access'
 import type { DMeta, DOrder } from '@/lib/dashboard/types'
-import { DashContext, istTime, makeApi, Toaster, type Dash } from './kit'
+import { DashContext, istTime, makeApi, setDayClose, Toaster, type Dash } from './kit'
 import NewOrderAlert from './NewOrderAlert'
 
 type BranchOpt = { id: string; name: string; slug: string }
@@ -134,6 +134,8 @@ export default function DashboardShell({ staff, children }: { staff: StaffContex
 
   const ping = useCallback(() => { if (soundOn) chime() }, [soundOn])
 
+  // Pages work out "today" from this (Settings > Business day ends at); set before they render.
+  setDayClose(meta?.settings?.day_close_time)
   const dash = useMemo<Dash | null>(() => meta && slug ? {
     slug, api, branch: meta.branch, settings: meta.settings, riders: meta.riders, staff: meta.staff,
     toast, reloadMeta, busy, handoff,

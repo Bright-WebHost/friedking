@@ -1,10 +1,12 @@
 import { getSettings, HttpError, str, type Ctx } from '@/lib/dashboard/server'
+import { dayShiftMs } from '@/lib/dashboard/settings'
 import type { Handler } from './index'
 import { loadOrders } from './orders'
 import { execute, prepare, type Resolved } from './aiActions'
 
 const rs = (paise: number) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`
-const istDay = (t: string | number) => new Date(new Date(t).getTime() + 19800000).toISOString().slice(0, 10)
+// The business day (Settings > Business day ends at): with 03:00, an order at 1 am belongs to the day before.
+const istDayWith = (shift: number) => (t: string | number) => new Date(new Date(t).getTime() + 19800000 - shift).toISOString().slice(0, 10)
 const typeName = (t: string) => (t === 'pickup' ? 'takeaway' : t)
 // the joined customer comes back as an object or a one-item list depending on the query
 const cust = (o: { customer?: unknown }) => (Array.isArray(o.customer) ? o.customer[0] : o.customer) as { name?: string | null; phone?: string } | null | undefined
@@ -13,8 +15,10 @@ const cust = (o: { customer?: unknown }) => (Array.isArray(o.customer) ? o.custo
 async function snapshot(ctx: Ctx) {
   const settings = await getSettings(ctx)
   const defLow = Number(settings.low_stock_threshold) || 5
+  const shift = dayShiftMs(settings.day_close_time)
+  const istDay = istDayWith(shift)
   const todayKey = istDay(Date.now())
-  const since = new Date(new Date(`${todayKey}T00:00:00+05:30`).getTime() - 6 * 86400000).toISOString()
+  const since = new Date(new Date(`${todayKey}T00:00:00+05:30`).getTime() + shift - 6 * 86400000).toISOString()
   const orders = await loadOrders(ctx, { since, limit: 2000 })
   const live = orders.filter((o) => o.status !== 'cancelled')
   const today = live.filter((o) => istDay(o.created_at) === todayKey)

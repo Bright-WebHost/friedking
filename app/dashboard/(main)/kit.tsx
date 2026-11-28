@@ -4,7 +4,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { DBranch, DMeta, DOrder, DRider } from '@/lib/dashboard/types'
-import type { SettingKey } from '@/lib/dashboard/settings'
+import { dayShiftMs, type SettingKey } from '@/lib/dashboard/settings'
 import type { StaffRole } from '@/lib/dashboard/access'
 import { normalizePhone } from '@/lib/utils'
 
@@ -81,8 +81,14 @@ const timeFmt = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hou
 export const istTime = (t: Date) => timeFmt.format(t)
 export const fmtMins = (m: number) => (m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`)
 export const minsSince = (t: string) => Math.max(0, Math.floor((Date.now() - new Date(t).getTime()) / 60000))
-/** "2026-11-14" in IST for a timestamp */
-export const dayKeyIST = (t: string | number | Date) => new Date(new Date(t).getTime() + 19800000).toISOString().slice(0, 10)
+/**
+ * Business day: set from Settings > "Business day ends at" (see setDayClose). With 03:00 an order at 1 am counts
+ * for the day before; 00:00 (the default) is the normal calendar day.
+ */
+let dayShift = 0
+export const setDayClose = (value: string | null | undefined) => { dayShift = dayShiftMs(value) }
+/** "2026-11-14" in IST for a timestamp (the business day it belongs to) */
+export const dayKeyIST = (t: string | number | Date) => new Date(new Date(t).getTime() + 19800000 - dayShift).toISOString().slice(0, 10)
 export const todayIST = () => dayKeyIST(Date.now())
 export const phoneShort = (p: string | null | undefined) => (p ?? '').replace(/^\+91/, '')
 export const statusLabel = (o: Pick<DOrder, 'status' | 'order_type'>) =>
@@ -96,7 +102,8 @@ export const customerName = (o: DOrder) => o.customer?.name || 'Guest'
 export type Range = 'today' | 'yesterday' | 'week' | 'month' | 'all' | 'custom'
 export const RANGES: Array<[Range, string]> = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This Week'], ['month', 'This Month'], ['all', 'All Time']]
 
-const istMidnight = (day: string) => new Date(`${day}T00:00:00+05:30`).getTime()
+/** When a business day starts (midnight IST plus the day-close time). */
+const istMidnight = (day: string) => new Date(`${day}T00:00:00+05:30`).getTime() + dayShift
 export function rangeBounds(range: Range, from = '', to = ''): { start: number; end: number } {
   const today = istMidnight(todayIST())
   const now = Date.now()

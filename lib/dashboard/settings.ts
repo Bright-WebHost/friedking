@@ -5,6 +5,9 @@ export const SETTING_DEFAULTS = {
   gst_percent: '5',
   gstin: '',
   hours: '',
+  // When the business day ends (IST, HH:MM). 00:00 = midnight. A shop open until 3 am sets 03:00, so orders after
+  // midnight still belong to the day that started the evening before (Today, Yesterday, reports, token numbers).
+  day_close_time: '00:00',
   order_types: 'Delivery, Pickup, Dine-in',
   min_order: '0',
   delivery_fee: '0',
@@ -36,6 +39,14 @@ export const SETTING_DEFAULTS = {
 
 export type SettingKey = keyof typeof SETTING_DEFAULTS
 export const SETTING_KEYS = Object.keys(SETTING_DEFAULTS) as SettingKey[]
+
+/** "03:00" -> milliseconds after midnight (0 for anything invalid). Capped at 12 hours. */
+export function dayShiftMs(value: string | null | undefined): number {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)/.exec(String(value ?? ''))
+  if (!m) return 0
+  const ms = (Number(m[1]) * 60 + Number(m[2])) * 60000
+  return ms > 12 * 3600000 ? 0 : ms
+}
 
 /** Fallback for branches that have not saved the owner-controlled limit yet. */
 export const DEFAULT_MONTHLY_BLAST_LIMIT = 1000

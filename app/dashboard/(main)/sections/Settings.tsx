@@ -118,6 +118,12 @@ export default function Settings() {
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>Saved per branch. The website uses the fee, the free-delivery offer, the minimum order, the pincodes below and the order types above.</div>
       </div>
 
+      <div className="panel"><h3>Business day</h3>
+        <p className="asub" style={{ marginTop: -6 }}>If the shop stays open past midnight, set when the business day ends. Orders placed before this time still count for the day that started the evening before: in Today / Yesterday on Orders, Analytics, P&amp;L, Riders and Stock, the AI Assistant and the daily token numbers. Leave 00:00 for a normal midnight change.</p>
+        <div style={{ flex: '0 0 200px' }}>{field('Business day ends at (IST)', <input className="f" type="time" value={st.day_close_time} onChange={setSet('day_close_time')} />)}</div>
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>For example 03:00: an order at 1:30 am on Sunday is part of Saturday&apos;s business day. Between 00:00 and 12:00. Set the shift closing report time just after it (e.g. 03:05).</div>
+      </div>
+
       <div className="panel"><h3>Shift closing report</h3>
         <p className="asub" style={{ marginTop: -6 }}>Every day at the time below, the shift closing report (the same summary as Analytics › Shift Close Report: revenue, orders, channels, cash, staff on duty, top items) is sent on WhatsApp as a picture to these numbers.</p>
         <label className="avrow"><input type="checkbox" className="cbox" checked={st.shift_report_enabled === 'true'} onChange={(e) => setS({ ...st, shift_report_enabled: e.target.checked ? 'true' : 'false' })} /> <span><b>Send the report every day</b></span></label>

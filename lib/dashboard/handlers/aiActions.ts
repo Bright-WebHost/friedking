@@ -1,4 +1,5 @@
-import { audit, check, clearBranchCache, HttpError, str, type Ctx } from '@/lib/dashboard/server'
+import { audit, check, clearBranchCache, getSettings, HttpError, str, type Ctx } from '@/lib/dashboard/server'
+import { dayShiftMs } from '@/lib/dashboard/settings'
 import { isBoss } from '@/lib/dashboard/access'
 import { ordersHandler } from './orders'
 import { stockHandler } from './stock'
@@ -169,7 +170,7 @@ export async function execute(ctx: Ctx, a: Record<string, unknown>, passcode: un
       break
     }
     case 'expense': {
-      const today = new Date(Date.now() + 19800000).toISOString().slice(0, 10)
+      const today = new Date(Date.now() + 19800000 - dayShiftMs((await getSettings(ctx)).day_close_time)).toISOString().slice(0, 10) // business day
       await h(expensesHandler, 'add', { date: today, category: p.category, amount: p.amount, note: p.note })
       break
     }

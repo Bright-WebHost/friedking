@@ -16,6 +16,10 @@ function cleanSetting(key: string, raw: unknown): string {
     if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v)) throw new HttpError(400, 'Report time must look like 23:45')
     return v
   }
+  if (key === 'day_close_time') {
+    if (!/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(v) || v > '12:00') throw new HttpError(400, 'Business day end must be between 00:00 and 12:00, like 03:00')
+    return v
+  }
   if (key === 'shift_report_numbers') {
     // numbers are separated by commas or new lines; spaces and +91 inside a number are fine
     const nums = v.split(/[,;\n]+/).map((t) => t.replace(/\D/g, '')).filter(Boolean).map((d) => d.slice(-10))
