@@ -29,6 +29,7 @@ export default function Contacts() {
   const [drag, setDrag] = useState(false)
   const [imported, setImported] = useState<number | null>(null)
   const [selecting, setSelecting] = useState(false)
+  const [firstN, setFirstN] = useState('')
   const seq = useRef(0)
 
   useEffect(() => {
@@ -79,6 +80,26 @@ export default function Contacts() {
     try { await api.post('contacts', 'setName', { phone: c.phone, name }); toast('Name saved'); void load() }
     catch (e) { toast(e instanceof Error ? e.message : 'Could not save the name') }
   }
+  // Tick box in the table header: every selectable (not opted-out) row on this page.
+  const pageRows = shown.filter((c) => !c.opted_out)
+  const pageAll = pageRows.length > 0 && pageRows.every((c) => pick.has(c.phone))
+  const pageSome = !pageAll && pageRows.some((c) => pick.has(c.phone))
+  const togglePage = () => {
+    const n = new Set(pick)
+    for (const c of pageRows) { if (pageAll) n.delete(c.phone); else n.add(c.phone) }
+    setPick(n)
+  }
+  const selectFirst = async () => {
+    const count = Math.floor(Number(firstN))
+    if (!count || count < 1) { toast('Enter how many contacts to select'); return }
+    setSelecting(true)
+    try {
+      const r = await api.post<{ phones: string[] }>('contacts', 'firstPhones', { q: search, seg, sort, count })
+      setPick(new Set(r.phones)) // replaces the selection so "first 200" means exactly 200
+      toast(`${r.phones.length} contacts selected${r.phones.length < count ? ` (only ${r.phones.length} available)` : ''}`)
+    } catch (e) { toast(e instanceof Error ? e.message : 'Could not select') }
+    finally { setSelecting(false) }
+  }
   const selectAll = async () => {
     setSelecting(true)
     try {
@@ -116,11 +137,13 @@ export default function Contacts() {
           <option value="orders_asc">Total orders: low to high</option><option value="name_asc">Name: A → Z</option><option value="name_desc">Name: Z → A</option>
         </select>
         <button className="btn sm ghost" disabled={selecting || !data.matching} onClick={() => void selectAll()}>{selecting ? 'Selecting…' : `Select all ${filtered ? 'matching' : 'contacts'} (${data.matching})`}</button>
+        <input className="f" type="number" min={1} max={5000} inputMode="numeric" style={{ margin: 0, width: 96 }} placeholder="How many" value={firstN} onChange={(e) => setFirstN(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void selectFirst() }} />
+        <button className="btn sm ghost" disabled={selecting || !data.matching} onClick={() => void selectFirst()}>Select first {firstN || 'N'}</button>
         <button className="btn sm ghost" onClick={() => setPick(new Set())}>Clear</button>
         {pick.size > 0 && <span className="selinfo">{pick.size} selected</span>}
         {busy && <span className="selinfo">Loading…</span>}
       </div>
-      <div className="tblwrap" style={{ opacity: busy ? 0.6 : 1 }}><table><thead><tr><th style={{ width: 38 }} /><th>Number</th><th>Name</th><th>Orders</th><th>Last order</th></tr></thead><tbody>
+      <div className="tblwrap" style={{ opacity: busy ? 0.6 : 1 }}><table><thead><tr><th style={{ width: 38 }}><input type="checkbox" className="cbox" title="Select everyone on this page" aria-label="Select everyone on this page" disabled={!pageRows.length} checked={pageAll} ref={(el) => { if (el) el.indeterminate = pageSome }} onChange={togglePage} /></th><th>Number</th><th>Name</th><th>Orders</th><th>Last order</th></tr></thead><tbody>
         {shown.length ? shown.map((c) => <tr key={c.id}>
           <td><input type="checkbox" className="cbox" disabled={c.opted_out} checked={pick.has(c.phone)} onChange={(e) => { const n = new Set(pick); if (e.target.checked) n.add(c.phone); else n.delete(c.phone); setPick(n) }} /></td>
           <td>{phoneShort(c.phone)}</td><td><button title="Add or change the name" style={{ textAlign: 'left', color: c.name ? 'inherit' : 'var(--muted)' }} onClick={() => void editName(c)}>{c.name || '+ Add name'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>✎</span></button></td><td>{c.total_orders}</td>

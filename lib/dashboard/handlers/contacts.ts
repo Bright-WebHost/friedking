@@ -1,7 +1,7 @@
 import { normalizePhone } from '@/lib/utils'
 import { check, HttpError, str } from '@/lib/dashboard/server'
 import type { Handler } from './index'
-import { contactsMatching, contactsPage, contactTotals, customersWithOrders, SEGMENTS, SORTS, type ContactFilter, type Segment, type Sort } from '@/lib/dashboard/customers'
+import { contactsFirst, contactsMatching, contactsPage, contactTotals, customersWithOrders, SEGMENTS, SORTS, type ContactFilter, type Segment, type Sort } from '@/lib/dashboard/customers'
 
 /** Search / filter / sort from the request, validated. */
 function filterOf(src: { get(k: string): string | null }): ContactFilter & { sort: Sort } {
@@ -87,6 +87,13 @@ export const contactsHandler: Handler = {
     async phones(ctx, b) {
       const f = filterOf({ get: (k: string) => (b[k] == null ? null : String(b[k])) })
       return { phones: (await contactsMatching(ctx, { ...f, reachableOnly: true })).map((c) => c.phone) }
+    },
+    /** The first N reachable numbers of the current search / filter / sort ("Select first N"). */
+    async firstPhones(ctx, b) {
+      const f = filterOf({ get: (k: string) => (b[k] == null ? null : String(b[k])) })
+      const count = Math.min(5000, Math.floor(Number(b.count)) || 0)
+      if (count < 1) throw new HttpError(400, 'Enter how many contacts to select')
+      return { phones: (await contactsFirst(ctx, f, f.sort, count)).map((c) => c.phone) }
     },
     /** Add or correct one contact's name (used in promotions as "Hi <name>"). */
     async setName(ctx, b) {

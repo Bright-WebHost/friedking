@@ -193,6 +193,23 @@ export async function contactsMatching(ctx: Ctx, f: ContactFilter): Promise<Arra
   return (await loadAllCustomersLegacy(ctx)).filter((c) => matches(c, f)).map((c) => ({ phone: c.phone, name: c.name }))
 }
 
+/** The first `count` reachable contacts of a search/filter, in the order shown on Contacts ("Select first N"). */
+export async function contactsFirst(ctx: Ctx, f: ContactFilter, sort: Sort, count: number) {
+  const n = Math.max(0, Math.floor(count))
+  if (!n) return []
+  if (await statsInstalled(ctx)) {
+    const out: Array<{ phone: string; name: string | null }> = []
+    for (let from = 0; out.length < n; from += 1000) {
+      const to = Math.min(from + 999, n - 1)
+      const rows = (check(await applySort(applyFilter(ctx.admin.from('customers').select('phone, name').eq('branch_id', ctx.branch.id), { ...f, reachableOnly: true }), sort).range(from, to), 'load contacts') ?? []) as Array<{ phone: string; name: string | null }>
+      out.push(...rows)
+      if (rows.length < to - from + 1) break
+    }
+    return out.slice(0, n)
+  }
+  return (await loadAllCustomersLegacy(ctx)).filter((c) => matches(c, { ...f, reachableOnly: true })).sort(compare(sort)).slice(0, n).map((c) => ({ phone: c.phone, name: c.name }))
+}
+
 /** Saved contacts among these numbers (Blast "selected contacts"). */
 export async function contactsByPhones(ctx: Ctx, phones: string[]) {
   const out: Array<{ phone: string; name: string | null; opted_out: boolean }> = []
