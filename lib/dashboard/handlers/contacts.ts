@@ -1,7 +1,8 @@
 import { normalizePhone } from '@/lib/utils'
 import { check, HttpError, str } from '@/lib/dashboard/server'
 import type { Handler } from './index'
-import { contactsFirst, contactsMatching, contactsPage, contactTotals, customersWithOrders, SEGMENTS, SORTS, type ContactFilter, type Segment, type Sort } from '@/lib/dashboard/customers'
+import type { Ctx } from '@/lib/dashboard/server'
+import { contactsByPhones, contactsFirst, contactsMatching, contactsPage, fetchAll, contactTotals, customersWithOrders, SEGMENTS, SORTS, type ContactFilter, type Segment, type Sort } from '@/lib/dashboard/customers'
 
 /** Search / filter / sort from the request, validated. */
 function filterOf(src: { get(k: string): string | null }): ContactFilter & { sort: Sort } {
@@ -39,6 +40,22 @@ export function parseContacts(text: string) {
   return out
 }
 
+/** One message's state as the dashboard shows it. */
+function messageState(m: { status: string; delivery_status: string | null }) {
+  if (m.status === 'failed' || m.delivery_status === 'failed') return 'failed'
+  if (m.delivery_status === 'read' || m.delivery_status === 'delivered') return m.delivery_status
+  return m.status === 'done' ? 'sent' : 'waiting'
+}
+
+/** Messages of one promotion, optionally only the failed ones. */
+function promoMessages(ctx: Ctx, id: string, only: string, cols: string, withCount = false) {
+  let q = ctx.admin.from('outbound_messages').select(cols, withCount ? { count: 'exact' } : undefined).eq('branch_id', ctx.branch.id).eq('campaign_id', id)
+  if (only === 'failed') q = q.or('status.eq.failed,delivery_status.eq.failed')
+  return q
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export const contactsHandler: Handler = {
   sections: ['contacts', 'blast', 'analytics', 'loyalty'],
   /**
@@ -46,6 +63,33 @@ export const contactsHandler: Handler = {
    * GET ?view=ordered -> every customer who has ordered (Analytics).
    */
   async get(ctx, params) {
+    // Promotion history: GET ?view=promos -> past promotions, newest first, each with its delivery counts.
+    if (params.get('view') === 'promos') {
+      const list = check(await ctx.admin.from('broadcast_campaigns').select('id, title, template_name, recipient_count, created_by_name, created_at')
+        .eq('branch_id', ctx.branch.id).order('created_at', { ascending: false }).limit(100), 'load promotions') ?? []
+      const stats: Record<string, unknown> = {}
+      if (list.length) {
+        const r = await ctx.admin.rpc('fk_blast_campaign_stats', { p_campaign_ids: list.map((c) => c.id) })
+        if (!r.error) for (const x of (r.data ?? []) as Array<{ campaign_id: string }>) stats[x.campaign_id] = x
+      }
+      return { campaigns: list, stats }
+    }
+    // GET ?view=promo&id=&only=&page= -> the contacts one promotion was sent to (100 per page).
+    if (params.get('view') === 'promo') {
+      const id = String(params.get('id') ?? '')
+      if (!UUID.test(id)) throw new HttpError(400, 'Invalid promotion')
+      const only = params.get('only') === 'failed' ? 'failed' : 'all'
+      const page = Math.max(1, Math.floor(Number(params.get('page')) || 1))
+      const from = (page - 1) * 100
+      const res = await promoMessages(ctx, id, only, 'to_phone, status, delivery_status, delivery_error, error_message, processed_at, created_at', true)
+        .order('created_at').order('id').range(from, from + 99)
+      const rows = (check(res, 'load the promotion') ?? []) as unknown as Array<{ to_phone: string; status: string; delivery_status: string | null; delivery_error: string | null; error_message: string | null; processed_at: string | null; created_at: string }>
+      const names = new Map((await contactsByPhones(ctx, rows.map((r) => r.to_phone))).map((c) => [c.phone, c.name]))
+      return {
+        page, size: 100, matching: (res as { count: number | null }).count ?? rows.length,
+        recipients: rows.map((r) => ({ phone: r.to_phone, name: names.get(r.to_phone) ?? null, state: messageState(r), error: r.delivery_error || r.error_message || null, at: r.processed_at ?? r.created_at })),
+      }
+    }
     if (params.get('view') === 'ordered') return { customers: await customersWithOrders(ctx) }
     const f = filterOf(params)
     const size = Math.min(200, Math.max(10, Math.floor(Number(params.get('size')) || 100)))
@@ -87,6 +131,14 @@ export const contactsHandler: Handler = {
     async phones(ctx, b) {
       const f = filterOf({ get: (k: string) => (b[k] == null ? null : String(b[k])) })
       return { phones: (await contactsMatching(ctx, { ...f, reachableOnly: true })).map((c) => c.phone) }
+    },
+    /** Every reachable number a promotion was sent to (or only the failed ones), to send again. */
+    async promoPhones(ctx, b) {
+      const id = String(b.id ?? '')
+      if (!UUID.test(id)) throw new HttpError(400, 'Invalid promotion')
+      const rows = await fetchAll<{ to_phone: string }>('load the promotion', (from, to) => promoMessages(ctx, id, b.only === 'failed' ? 'failed' : 'all', 'to_phone').order('id').range(from, to) as unknown as PromiseLike<{ data: Array<{ to_phone: string }> | null; error: { message: string } | null }>)
+      const live = new Set((await contactsByPhones(ctx, [...new Set(rows.map((r) => r.to_phone))])).filter((c) => !c.opted_out).map((c) => c.phone))
+      return { phones: [...live] }
     },
     /** The first N reachable numbers of the current search / filter / sort ("Select first N"). */
     async firstPhones(ctx, b) {

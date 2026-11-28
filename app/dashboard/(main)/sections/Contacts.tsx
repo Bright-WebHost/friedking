@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DCustomer } from '@/lib/dashboard/types'
 import { dayKeyIST, Loading, phoneShort, useDash } from '../kit'
+import PromoHistory from './PromoHistory'
 
 type Seg = 'all' | 'recent30' | 'inactive1' | 'inactive2' | 'repeat' | 'onetime' | 'optout' | 'never_promo'
 type Sort = 'last_desc' | 'last_asc' | 'orders_desc' | 'orders_asc' | 'name_asc' | 'name_desc' | 'promo_desc' | 'promo_asc'
@@ -14,7 +15,7 @@ interface PageData { customers: DCustomer[]; matching: number; total: number; op
  * Contacts. Search, filter, sort and paging run on the server (lib/dashboard/customers.ts), so only the 100 rows on
  * screen are downloaded, however many contacts the branch has.
  */
-export default function Contacts() {
+function ContactsList() {
   const { api, toast, go } = useDash()
   const [q, setQ] = useState('')
   const [search, setSearch] = useState('') // q after the person stops typing
@@ -155,6 +156,20 @@ export default function Contacts() {
       {pages > 1 && <Pager page={Math.min(page, pages)} pages={pages} total={data.matching} onPage={setPage} />}
       {pick.size > 0 && <button className="btn" style={{ marginTop: 16 }} onClick={() => go('blast', { phones: [...pick] })}>Blast to {pick.size} selected →</button>}
     </section>
+  )
+}
+
+/** Contacts page: the contact list, plus the history of promotions sent. */
+export default function Contacts() {
+  const [tab, setTab] = useState<'list' | 'history'>('list')
+  return (
+    <>
+      <div className="pickbar" style={{ marginBottom: 14 }}>
+        <button className={`btn sm ${tab === 'list' ? '' : 'ghost'}`} onClick={() => setTab('list')}>Contacts</button>
+        <button className={`btn sm ${tab === 'history' ? '' : 'ghost'}`} onClick={() => setTab('history')}>Promotion history</button>
+      </div>
+      {tab === 'list' ? <ContactsList /> : <PromoHistory />}
+    </>
   )
 }
 
