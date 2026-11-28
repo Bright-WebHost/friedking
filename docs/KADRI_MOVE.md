@@ -37,6 +37,11 @@ project. In each: change the Supabase credential from `Fried King | Supabase (se
 `Fried King Bangalore - Supabase` (friedking-2) and the project host in every database URL. Keep Kadri's own sender number,
 `p_branch` = `kadri`, webhook paths and YCloud credential.
 
+**Done 2026-11-28:** all six originals (Main, Send OTP, Order Events, Blast Sender, Chat Replies, Shift Report) now use the
+`Fried King Bangalore - Supabase` credential and the friedking-2 host; active/inactive states are unchanged and Blast Sender
+keeps running every minute without errors. Backups: `n8n-backups/before-kadri-move-<id>.json` (gitignored). The older inactive
+copies named `Fried King Kadri | ... | friedking-2` (Main, Send OTP, Order Events, Blast Sender) are not needed and can be deleted.
+
 ## 4. Vercel
 Add `NEXT_PUBLIC_FRIEDKING_KADRI_ON_SECONDARY=true` (Production), then redeploy. Optional: `KADRI_CUSTOMER_SESSION_SECRET`
 (without it a key derived from the second project's service key is used, like Bangalore) and `KADRI_RIDER_CALLBACK_SECRET`
