@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       }
       const sum = (k: 'subtotal_paise' | 'gst_paise' | 'total_paise' | 'discount_paise' | 'loyalty_discount_paise') => rounds.reduce((t, r) => t + (r[k] ?? 0), 0)
       const first = rounds[0]
-      order = { ...first, status: 'delivered', order_type: 'dine-in', cash_collected: true, delivery_address: null,
+      order = { ...first, status: 'delivered', order_type: 'dine-in', cash_collected: rounds.every((r) => r.cash_collected), delivery_address: null,
         special_instructions: rounds.map((r) => r.special_instructions).filter(Boolean).join('; ') || null,
         created_at: new Date().toISOString(), items: [...merged.values()],
         subtotal_paise: sum('subtotal_paise'), gst_paise: sum('gst_paise'), total_paise: sum('total_paise'),
