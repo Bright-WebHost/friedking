@@ -12,10 +12,10 @@ import type { DCustomer } from '@/lib/dashboard/types'
 
 export const LIVE_STATUSES = ['pending', 'confirmed', 'preparing', 'ready', 'delivered']
 
-export type Segment = 'all' | 'recent30' | 'inactive1' | 'inactive2' | 'repeat' | 'onetime' | 'optout'
-export type Sort = 'last_desc' | 'last_asc' | 'orders_desc' | 'orders_asc' | 'name_asc' | 'name_desc'
-export const SEGMENTS: Segment[] = ['all', 'recent30', 'inactive1', 'inactive2', 'repeat', 'onetime', 'optout']
-export const SORTS: Sort[] = ['last_desc', 'last_asc', 'orders_desc', 'orders_asc', 'name_asc', 'name_desc']
+export type Segment = 'all' | 'recent30' | 'inactive1' | 'inactive2' | 'repeat' | 'onetime' | 'optout' | 'never_promo'
+export type Sort = 'last_desc' | 'last_asc' | 'orders_desc' | 'orders_asc' | 'name_asc' | 'name_desc' | 'promo_desc' | 'promo_asc'
+export const SEGMENTS: Segment[] = ['all', 'recent30', 'inactive1', 'inactive2', 'repeat', 'onetime', 'optout', 'never_promo']
+export const SORTS: Sort[] = ['last_desc', 'last_asc', 'orders_desc', 'orders_asc', 'name_asc', 'name_desc', 'promo_desc', 'promo_asc']
 
 export interface ContactFilter {
   q?: string
@@ -51,6 +51,23 @@ export async function statsInstalled(ctx: Ctx): Promise<boolean> {
   return !error
 }
 
+// ── Is friedking_promo_stats.sql installed (promo_count / last_promo_at)? Same caching as above. ────────
+const promoCache = new Map<string, { ok: boolean; at: number }>()
+export async function promoInstalled(ctx: Ctx): Promise<boolean> {
+  const hit = promoCache.get(ctx.branch.id)
+  if (hit && Date.now() - hit.at < (hit.ok ? 600000 : 60000)) return hit.ok
+  const ok = await statsInstalled(ctx) && !(await ctx.admin.from('customers').select('promo_count, last_promo_at').limit(1)).error
+  promoCache.set(ctx.branch.id, { ok, at: Date.now() })
+  return ok
+}
+
+/** Promotion sorts and the "never sent a promotion" filter need the promo columns; without them fall back to the defaults. */
+export async function usablePromo(ctx: Ctx, f: ContactFilter, sort: Sort): Promise<{ f: ContactFilter; sort: Sort; promo: boolean }> {
+  const promo = await promoInstalled(ctx)
+  if (promo) return { f, sort, promo }
+  return { f: f.seg === 'never_promo' ? { ...f, seg: 'all' } : f, sort: sort === 'promo_desc' || sort === 'promo_asc' ? 'last_desc' : sort, promo }
+}
+
 // ── Shared helpers ───────────────────────────────────────────────────────────────────────────────
 /** Search text safe to put inside a PostgREST filter: letters, digits, spaces and . ' - only. */
 function cleanSearch(q: string | undefined) {
@@ -63,15 +80,16 @@ function cleanSearch(q: string | undefined) {
 type Points = { points_balance: number; lifetime_points: number; tier: string | null }
 interface Row {
   id: string; phone: string; name: string | null; created_at: string; opted_out?: boolean | null; source?: string | null
-  total_orders?: number | null; last_order_at?: string | null; loyalty_accounts?: Points | Points[] | null
+  total_orders?: number | null; last_order_at?: string | null; promo_count?: number | null; last_promo_at?: string | null; loyalty_accounts?: Points | Points[] | null
 }
 const SELECT = 'id, phone, name, created_at, opted_out, source, total_orders, last_order_at, loyalty_accounts(points_balance, lifetime_points, tier)'
+const SELECT_PROMO = 'id, phone, name, created_at, opted_out, source, total_orders, last_order_at, promo_count, last_promo_at, loyalty_accounts(points_balance, lifetime_points, tier)'
 
 function toCustomer(r: Row): DCustomer {
   const pts = Array.isArray(r.loyalty_accounts) ? r.loyalty_accounts[0] : r.loyalty_accounts
   return {
     id: r.id, phone: r.phone, name: r.name ?? null, created_at: r.created_at, opted_out: !!r.opted_out, source: r.source ?? 'order',
-    total_orders: r.total_orders ?? 0, last_order_at: r.last_order_at ?? null,
+    total_orders: r.total_orders ?? 0, last_order_at: r.last_order_at ?? null, promo_count: r.promo_count ?? 0, last_promo_at: r.last_promo_at ?? null,
     points_balance: pts?.points_balance ?? 0, lifetime_points: pts?.lifetime_points ?? 0, tier: pts?.tier ?? null,
   }
 }
@@ -91,6 +109,7 @@ function applyFilter(query: any, f: ContactFilter) {
     case 'repeat': query = query.gt('total_orders', 1); break
     case 'onetime': query = query.eq('total_orders', 1); break
     case 'optout': query = query.eq('opted_out', true); break
+    case 'never_promo': query = query.eq('promo_count', 0); break
   }
   if (f.reachableOnly) query = query.eq('opted_out', false)
   return query
@@ -109,6 +128,7 @@ function matches(c: DCustomer, f: ContactFilter, now = Date.now()) {
     case 'repeat': return c.total_orders > 1
     case 'onetime': return c.total_orders === 1
     case 'optout': return c.opted_out
+    case 'never_promo': return (c.promo_count ?? 0) === 0
     default: return true
   }
 }
@@ -121,6 +141,8 @@ function applySort(query: any, sort: Sort) {
     case 'orders_asc': query = query.order('total_orders', { ascending: true }); break
     case 'name_asc': query = query.order('name', { ascending: true, nullsFirst: true }); break
     case 'name_desc': query = query.order('name', { ascending: false, nullsFirst: false }); break
+    case 'promo_desc': query = query.order('last_promo_at', { ascending: false, nullsFirst: false }); break
+    case 'promo_asc': query = query.order('last_promo_at', { ascending: true, nullsFirst: true }); break
     default: query = query.order('last_order_at', { ascending: false, nullsFirst: false })
   }
   return query.order('created_at', { ascending: false }).order('id')
@@ -134,6 +156,8 @@ function compare(sort: Sort) {
       case 'orders_asc': return a.total_orders - b.total_orders
       case 'name_asc': return (a.name ?? '').localeCompare(b.name ?? '')
       case 'name_desc': return (b.name ?? '').localeCompare(a.name ?? '')
+      case 'promo_desc': return (b.last_promo_at ?? '').localeCompare(a.last_promo_at ?? '')
+      case 'promo_asc': return (a.last_promo_at ?? '').localeCompare(b.last_promo_at ?? '')
       default: return (b.last_order_at ?? '').localeCompare(a.last_order_at ?? '')
     }
   }
@@ -163,15 +187,16 @@ export async function loadAllCustomersLegacy(ctx: Ctx): Promise<DCustomer[]> {
 // ── What the sections use ──────────────────────────────────────────────────────────────────────────
 
 /** One page of contacts plus how many match. */
-export async function contactsPage(ctx: Ctx, f: ContactFilter, sort: Sort, page: number, size: number) {
+export async function contactsPage(ctx: Ctx, fIn: ContactFilter, sortIn: Sort, page: number, size: number) {
+  const { f, sort, promo } = await usablePromo(ctx, fIn, sortIn)
   if (await statsInstalled(ctx)) {
     const from = (page - 1) * size
-    const res = await applySort(applyFilter(ctx.admin.from('customers').select(SELECT, { count: 'exact' }).eq('branch_id', ctx.branch.id), f), sort).range(from, from + size - 1)
-    const rows = (check(res, 'load contacts') ?? []) as Row[]
-    return { customers: rows.map(toCustomer), matching: (res as { count: number | null }).count ?? rows.length }
+    const res = await applySort(applyFilter(ctx.admin.from('customers').select(promo ? SELECT_PROMO : SELECT, { count: 'exact' }).eq('branch_id', ctx.branch.id), f), sort).range(from, from + size - 1)
+    const rows = (check(res, 'load contacts') ?? []) as unknown as Row[]
+    return { customers: rows.map(toCustomer), matching: (res as { count: number | null }).count ?? rows.length, promo }
   }
   const all = (await loadAllCustomersLegacy(ctx)).filter((c) => matches(c, f)).sort(compare(sort))
-  return { customers: all.slice((page - 1) * size, page * size), matching: all.length }
+  return { customers: all.slice((page - 1) * size, page * size), matching: all.length, promo }
 }
 
 /** Saved / opted-out totals for the branch (the tiles on top of Contacts). */
@@ -184,7 +209,8 @@ export async function contactTotals(ctx: Ctx) {
 }
 
 /** Phone + name of every contact matching a filter (Blast audience, "select all"). */
-export async function contactsMatching(ctx: Ctx, f: ContactFilter): Promise<Array<{ phone: string; name: string | null }>> {
+export async function contactsMatching(ctx: Ctx, fIn: ContactFilter): Promise<Array<{ phone: string; name: string | null }>> {
+  const f = (await usablePromo(ctx, fIn, 'last_desc')).f
   const needsStats = !!f.seg && !['all', 'optout'].includes(f.seg)
   if (!needsStats || await statsInstalled(ctx)) {
     return fetchAll<{ phone: string; name: string | null }>('load contacts', (from, to) =>
@@ -194,7 +220,8 @@ export async function contactsMatching(ctx: Ctx, f: ContactFilter): Promise<Arra
 }
 
 /** The first `count` reachable contacts of a search/filter, in the order shown on Contacts ("Select first N"). */
-export async function contactsFirst(ctx: Ctx, f: ContactFilter, sort: Sort, count: number) {
+export async function contactsFirst(ctx: Ctx, fIn: ContactFilter, sortIn: Sort, count: number) {
+  const { f, sort } = await usablePromo(ctx, fIn, sortIn)
   const n = Math.max(0, Math.floor(count))
   if (!n) return []
   if (await statsInstalled(ctx)) {

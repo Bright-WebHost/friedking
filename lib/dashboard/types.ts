@@ -144,6 +144,9 @@ export interface DCustomer {
   source: string
   total_orders: number
   last_order_at: string | null
+  /** Promotions WhatsApp accepted for this contact (needs friedking_promo_stats.sql). */
+  promo_count?: number
+  last_promo_at?: string | null
   points_balance: number
   lifetime_points: number
   tier: string | null
